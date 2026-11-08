@@ -367,6 +367,7 @@ class Dispatcher:
         self.tool_id = ''
         self.running = False
         self.last_error = ''
+        self.last_event = None
         self._press = None          # (t, x, y, clicks) of the last LEFTMOUSE press
 
     # -- tool switching ---------------------------------------------------------------------------
@@ -424,6 +425,7 @@ class Dispatcher:
     # -- events -----------------------------------------------------------------------------------
     def handle(self, tc, ev, inf=None):
         """Route one event to the controller. Returns Result (PASS = not used, pass it on)."""
+        self.last_event = ev                     # diagnostics (GUI scenarios check modifiers arrive)
         ctrl = controller(self.tool_id) if self.tool_id else None
         if ctrl is None:
             return Result.PASS
@@ -665,9 +667,10 @@ _bl_tools = []       # registered WorkSpaceTool classes
 def tool_keymap(meta):
     if meta.kind == 'NAV':
         return ((meta.operator, {"type": 'LEFTMOUSE', "value": 'PRESS'}, None),)
-    return (("su.tool_event", {"type": 'LEFTMOUSE', "value": 'PRESS'}, None),
-            ("su.tool_event", {"type": 'LEFTMOUSE', "value": 'RELEASE'}, None),
-            ("su.tool_event", {"type": 'MOUSEMOVE', "value": 'ANY'}, None))
+    # "any": True — Shift/Option/Cmd+click and drag must reach the tools (Ctrl is passed on by su.tool_event)
+    return (("su.tool_event", {"type": 'LEFTMOUSE', "value": 'PRESS', "any": True}, None),
+            ("su.tool_event", {"type": 'LEFTMOUSE', "value": 'RELEASE', "any": True}, None),
+            ("su.tool_event", {"type": 'MOUSEMOVE', "value": 'ANY', "any": True}, None))
 
 
 def make_workspace_tool(meta, label):

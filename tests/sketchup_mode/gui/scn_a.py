@@ -58,6 +58,20 @@ def run(h):
         h.key('ESC')                         # close a context menu, if any opened
         yield 0.3
 
+    # 2b. modifier clicks reach the tool (tool keymap items use "any": True)
+    for mod in ("shift", "alt", "oskey"):
+        h.event('LEFTMOUSE', 'PRESS', **{mod: True})
+        h.event('LEFTMOUSE', 'RELEASE', **{mod: True})
+        yield 0.3
+        le = base.DISPATCH.last_event
+        got = {"shift": getattr(le, "shift", None), "alt": getattr(le, "copy", None),
+               "oskey": getattr(le, "alt_action", None)}[mod]
+        h.check("{:s}+click reaches the tool (ev.{:s})".format(mod, mod), le is not None and got is True,
+                (getattr(le, "type", None), getattr(le, "value", None), got))
+        h.key('ESC')
+        yield 0.3
+    h.check("modifier clicks leave no geometry", h.stats().get("edges") == 0, h.stats().get("edges"))
+
     # 3. rectangle 3×2 by Measurements
     h.glide(*h.world_xy((0.0, 0.0, 0.0)))
     yield 0.3

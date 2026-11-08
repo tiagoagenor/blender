@@ -48,7 +48,7 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - `ui/tray_entity_info.py` (seção 10): Face/Superfície (área, materiais frente/verso), Aresta/Curva (comprimento, segmentos), Grupo (nome editável), várias → "N entidades" + contagens + área total.
 - P1: `tools/flip.py` (Virar: 3 planos pelo centro da caixa, clique vira, Option = cópia espelhada, normais para fora); clipboard `su.copy/cut/paste/paste_in_place` (Cmd+C/X/V; Colar = no local e ativa Mover); `core/geom_transform.mirror` com faces invertidas.
 - Testes: `test_f_commands.py`, `test_f_flip.py`, `test_f_clipboard.py`; GUI `scn_f` passo 11 (triplo clique → G → grupo + dica; botão direito → menu; duplo clique entra / Esc sai; Ocultar/Reexibir; Explodir).
-- Pendente P1: Componentes (definições compartilhadas — depende de B: `Document` com malha compartilhada; adiado pelo coordenador, G continua criando grupo), faces ocultas.
+- Pendente P1: Componentes (definições compartilhadas — depende de B: `Document` com malha compartilhada; adiado pelo coordenador, G continua criando grupo).
 
 ### Bloco 5 — guias/cotas/textos, sem marcadores de inferência, Interseccionar
 - Selecionar: aresta > guia/cota/texto (G: `guides.pick`) > face; seleção dessas anotações em `tools/select.ANNOT` (as refs de B não comportam elementos que não são da malha); desenhadas em azul pela ferramenta; `SET` limpa; Esc limpa.
@@ -56,3 +56,10 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - Selecionar / Apagar / Pintura consultam a inferência com `flags=frozenset()`: nenhum marcador nem ScreenTip ao pairar (SketchUp).
 - P1 `su.intersect_faces(mode='MODEL'|'SELECTION')` (menu Editar ▸ Interseccionar faces de D): segmentos plano×plano recortados nos dois polígonos (malhas originais, sem modificadores) viram arestas no documento em edição (`geom.add_edge` divide as faces); 1 undo.
 - Testes: `test_f_guides.py`, `test_f_intersect.py`; GUI `scn_f` passo 12 (clique na guia → ⌫ apaga, 1 undo; Apagar na cota).
+
+### Bloco 6 — Faces ocultas (P1)
+- Ocultar em faces grava o atributo de face BOOLEAN **`su_hidden_face`** (entidade inteira; arestas ficam visíveis, como no SketchUp); 1 undo; seleção limpa.
+- Faces ocultas não são selecionáveis/pintáveis/movíveis: `spatial.ray_cast(skip=hidden_skip())` atravessa a face (o clique pega o que está atrás), a caixa janela/cruzamento e Selecionar tudo as ignoram; com Visualizar ▸ Geometria oculta (`su_style.show_hidden_geometry`) voltam a ser selecionáveis.
+- Reexibir ▸ Tudo / Último / Selecionados restauram (o atributo volta a False); 1 undo.
+- **Pendente (D)**: deixar de desenhar as faces com `su_hidden_face` no GN "SU_Display" sem mudar o nº/ordem das faces (C usa `idx % n_orig`): Named Attribute `su_hidden_face` → Split Edges (seleção) → Scale Elements escala 0 (seleção) no ramo original **antes** do Join/Flip; com `show_hidden_geometry` ligado, não colapsar (opcional: malha/translúcido). **Opcional (B)**: copiar `su_hidden_face` nas faces recriadas pelo kernel (CDT/merge) — hoje uma face recriada volta visível.
+- Testes: `test_f_hidden.py`; GUI `scn_f` passo 13. Print `screens/f_ocultar_face.png` (o topo ainda aparece até D colapsar no GN; o clique já atravessa e seleciona a base).

@@ -162,6 +162,17 @@ class SU_OT_delete_selected(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def select_all_visible():
+    """Selecionar tudo without hidden faces (unless Visualizar ▸ Geometria oculta is on)."""
+    from ..tools import select as sel_tool
+    sel = _core("selection")
+    sel.select_all()
+    if not sel_tool.show_hidden():
+        gone = {r for r in sel.get() if r.kind == 'FACE' and sel_tool.is_hidden_face(r.doc_key, r.index)}
+        if gone:
+            sel.remove(gone)
+
+
 class SU_OT_select_all(bpy.types.Operator):
     bl_idname = "su.select_all"
     bl_label = "Selecionar tudo"
@@ -172,7 +183,7 @@ class SU_OT_select_all(bpy.types.Operator):
         return _poll(context)
 
     def execute(self, context):
-        _core("selection").select_all()
+        select_all_visible()
         return {'FINISHED'}
 
 
@@ -346,9 +357,16 @@ def reverse_selected_faces(undo_key="edit.undo_reverse"):
 _last_hidden = []        # [("OBJECT", name) | ("EDGE", doc_key, index)] of the last Ocultar
 
 
+def _face_hidden_layer(bm):
+    """The face BOOLEAN layer `su_hidden_face` (created on demand; F owns it)."""
+    from ..tools.select import HIDDEN_FACE
+    lay = bm.faces.layers.bool.get(HIDDEN_FACE)
+    return lay if lay is not None else bm.faces.layers.bool.new(HIDDEN_FACE)
+
+
 def hide_selection(undo_key="edit.undo_hide"):
-    """Ocultar: selected groups are hidden (view layer), selected edges get su_hidden. Faces stay
-    (hidden faces = P1). Selection cleared."""
+    """Ocultar: selected groups are hidden (view layer), selected edges get su_hidden, selected faces
+    get su_hidden_face (whole entities: logical face / surface). Selection cleared. 1 undo step."""
     from ..core import document, geom, selection
     refs = selection.get()
     if not refs:
@@ -361,19 +379,26 @@ def hide_selection(undo_key="edit.undo_hide"):
             if o is not None:
                 o.hide_set(True)
                 done.append(("OBJECT", o.name))
-        elif r.kind == selection.EDGE:
-            by_doc.setdefault(r.doc_key, set()).add(r.index)
-    for key, idx in by_doc.items():
+        elif r.kind in (selection.EDGE, selection.FACE):
+            by_doc.setdefault(r.doc_key, {selection.EDGE: set(), selection.FACE: set()})[r.kind].add(r.index)
+    for key, sel in by_doc.items():
         doc = document.get_by_key(key)
         if doc is None:
             continue
         bm = doc.bm
         lay = geom.ensure_layers(bm)
         bm.edges.ensure_lookup_table()
-        for i in idx:
+        for i in sel[selection.EDGE]:
             if i < len(bm.edges):
                 bm.edges[i][lay.hidden] = True
                 done.append(("EDGE", key, i))
+        if sel[selection.FACE]:
+            hl = _face_hidden_layer(bm)
+            bm.faces.ensure_lookup_table()
+            for i in sel[selection.FACE]:
+                if i < len(bm.faces):
+                    bm.faces[i][hl] = True
+                    done.append(("FACE", key, i))
         changed.append(doc)
     if not done:
         return False
@@ -382,21 +407,34 @@ def hide_selection(undo_key="edit.undo_hide"):
     return True
 
 
+def _hidden_targets_of(doc):
+    from ..core import geom
+    bm = doc.bm
+    lay = geom.ensure_layers(bm)
+    bm.edges.index_update()
+    bm.faces.index_update()
+    out = [("EDGE", doc.key, e.index) for e in bm.edges if e[lay.hidden]]
+    from ..tools.select import HIDDEN_FACE
+    hl = bm.faces.layers.bool.get(HIDDEN_FACE)
+    if hl is not None:
+        out += [("FACE", doc.key, f.index) for f in bm.faces if f[hl]]
+    return out
+
+
 def unhide(which="ALL", undo_key="edit.undo_unhide"):
     """Reexibir: 'ALL' (everything in the current context), 'LAST' (the last Ocultar), 'SELECTED'
-    (selected refs). Returns True when something changed."""
+    (selected refs — hidden geometry is selectable while Visualizar ▸ Geometria oculta is on).
+    Returns True when something changed."""
     from ..core import document, edit_context, geom, selection
+    from ..tools.select import HIDDEN_FACE
     changed, n = [], 0
     if which == 'LAST':
         targets = list(_last_hidden)
     elif which == 'SELECTED':
-        targets = [("OBJECT", r.doc_key) if r.kind == selection.OBJECT else ("EDGE", r.doc_key, r.index)
-                   for r in selection.get() if r.kind in (selection.OBJECT, selection.EDGE)]
+        targets = [("OBJECT", r.doc_key) if r.kind == selection.OBJECT else (r.kind, r.doc_key, r.index)
+                   for r in selection.get()]
     else:
-        doc = document.active()
-        lay = geom.ensure_layers(doc.bm)
-        doc.bm.edges.index_update()
-        targets = [("EDGE", doc.key, e.index) for e in doc.bm.edges if e[lay.hidden]]
+        targets = _hidden_targets_of(document.active())
         for o in bpy.context.scene.objects:
             if edit_context.is_in_context(o) and o.hide_get():
                 targets.append(("OBJECT", o.name))
@@ -406,18 +444,28 @@ def unhide(which="ALL", undo_key="edit.undo_unhide"):
             if o is not None and o.hide_get():
                 o.hide_set(False)
                 n += 1
-        else:
-            doc = document.get_by_key(t[1])
-            if doc is None:
-                continue
-            bm = doc.bm
+            continue
+        doc = document.get_by_key(t[1])
+        if doc is None:
+            continue
+        bm = doc.bm
+        hit = False
+        if t[0] == "EDGE":
             lay = geom.ensure_layers(bm)
             bm.edges.ensure_lookup_table()
             if t[2] < len(bm.edges) and bm.edges[t[2]][lay.hidden]:
                 bm.edges[t[2]][lay.hidden] = False
-                n += 1
-                if doc not in changed:
-                    changed.append(doc)
+                hit = True
+        elif t[0] == "FACE":
+            hl = bm.faces.layers.bool.get(HIDDEN_FACE)
+            bm.faces.ensure_lookup_table()
+            if hl is not None and t[2] < len(bm.faces) and bm.faces[t[2]][hl]:
+                bm.faces[t[2]][hl] = False
+                hit = True
+        if hit:
+            n += 1
+            if doc not in changed:
+                changed.append(doc)
     if not n:
         return False
     commit(changed, undo_key)

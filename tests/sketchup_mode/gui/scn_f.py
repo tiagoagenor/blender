@@ -543,6 +543,37 @@ def run(h):
     yield 0.5
     h.check("Apagar erases the dimension under the cursor", len(guides.data().dims) == 0, len(guides.data().dims))
 
+    # 13. Ocultar a face (P1): attribute su_hidden_face, not pickable (a click selects what is behind),
+    #     Reexibir tudo restores; 1 undo each
+    new_box()
+    yield 0.4
+    h.move(*h.region_xy(region, 0.85, 0.85))
+    h.key('SPACE', unicode=' ')
+    yield 0.4
+    top = h.world_xy((4, 3, 3))
+    h.click(*top)
+    yield 0.5
+    top_i = next(iter(selection.get())).index if kinds() == (1, 0, 0) else None
+    s0 = bpy.context.scene.su_undo_serial
+    with ctx():
+        bpy.ops.su.hide()
+    yield 0.4
+    hl = doc.bm.faces.layers.bool.get(sel_tool.HIDDEN_FACE)
+    hid = [f.index for f in doc.bm.faces if hl is not None and f[hl]]
+    h.check("Ocultar on the top face → su_hidden_face, 1 undo", top_i is not None and hid == [top_i]
+            and bpy.context.scene.su_undo_serial - s0 == 1, (top_i, hid))
+    h.click(*top)
+    yield 0.5
+    picked = [r.index for r in selection.get()]
+    h.check("a click where the hidden face is selects what is behind (the bottom)",
+            kinds() == (1, 0, 0) and picked != [top_i], (kinds(), picked, top_i))
+    yield from shot("f_ocultar_face")
+    with ctx():
+        bpy.ops.su.unhide_all()
+    yield 0.4
+    hl = doc.bm.faces.layers.bool.get(sel_tool.HIDDEN_FACE)
+    h.check("Reexibir ▸ Tudo shows the face again", not any(f[hl] for f in doc.bm.faces) if hl else True)
+
     h.key('SPACE', unicode=' ')
     yield 0.4
     d = h.state()

@@ -768,7 +768,40 @@ def run(h):
         ok = d is not None and len(d.dims) == nd0 + 1
         txt = guides.dimension_text(len(d.dims) - 1) if ok else None
         check("cota da aresta de 8 m = \"8" + dec + "00m\"", ok and txt == "8" + dec + "00m", txt)
-        xfail("texto da cota desenhado/legível ao orbitar (AC-DIM-3)", "visual das Dimensões em andamento (G)")
+        if not ok:
+            return
+        # AC-DIM-3: the text is drawn (white box + dark glyphs) facing the screen, before and after orbiting
+        annotations = imp("draw.annotations")
+        from types import SimpleNamespace
+        dm = d.dims[len(d.dims) - 1]
+
+        def text_visible(tag):
+            _w, _a, region, _u, rv3d = regions()
+            parts = annotations.dimension_screen(SimpleNamespace(region=region, rv3d=rv3d), dm.a, dm.b, dm.offset)
+            if parts is None:
+                return False, "fora da tela"
+            mid = parts[2]
+            path = os.path.join(h.out_dir, "dia_cota_{:s}.png".format(tag))
+            h.screenshot(path)
+            img = h.load_png(path)
+            px = [h.probe(img, region.x + int(mid.x) + dx, region.y + int(mid.y) + dy, 0)
+                  for dx in range(-40, 41, 2) for dy in range(-14, 15, 2)]
+            light = sum(1 for c in px if min(c) >= 235)
+            dark = sum(1 for c in px if max(c) <= 90)
+            return light > 20 and dark > 3, {"claros": light, "escuros": dark, "desenhadas": annotations.last_drawn()}
+        h.park_mouse()
+        yield 0.5
+        ok1, info1 = text_visible("antes")
+        yield 0.2
+        check("texto da cota desenhado (fundo branco + texto escuro)", ok1, info1)
+        _w, area, region, _u, rv3d = regions()
+        h.drag('MIDDLEMOUSE', region.x + region.width // 2, region.y + region.height // 2, 90, 30)
+        yield 0.5
+        h.park_mouse()
+        yield 0.5
+        ok2, info2 = text_visible("orbitado")
+        yield 0.2
+        check("texto legível depois de orbitar (AC-DIM-3)", ok2, info2)
 
     # ------------------------------------------------------------------------------------------ 14
     @step(14, "Teclado em qualquer lugar (Bandeja, barra de status, ⌫)")

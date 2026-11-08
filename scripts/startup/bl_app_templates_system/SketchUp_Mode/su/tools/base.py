@@ -210,8 +210,10 @@ def run_command(meta):
         op = getattr(getattr(bpy.ops, mod), name)
         win, area, region, _rv3d = find_view3d()
         if area is None:
-            return op('INVOKE_DEFAULT')
+            return op('INVOKE_DEFAULT') if op.poll() else {'CANCELLED'}
         with bpy.context.temp_override(window=win, area=area, region=region):
+            if not op.poll():               # e.g. G (Criar grupo) with nothing selected: nothing happens
+                return {'CANCELLED'}
             return op('INVOKE_DEFAULT')
     except Exception:
         perf.exception("command {:s} ({:s})".format(meta.id, meta.operator))

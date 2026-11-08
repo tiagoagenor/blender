@@ -382,8 +382,9 @@ class TestErase(KernelCase):
     def test_erase_face_with_hole_removes_bridges(self):
         rect(self.bm, 0, 0, 3, 3)
         rect(self.bm, 1, 1, 2, 2)
-        ring = find_face(self.bm, (1.5, 1.5, 0))
-        outer = next(f for f in self.bm.faces if f is not ring)
+        inner = next(f for f in self.bm.faces
+                     if all(1 - 1e-6 <= c <= 2 + 1e-6 for v in f.verts for c in v.co.xy))
+        outer = next(f for f in self.bm.faces if f is not inner)      # a piece of the ring
         geom.erase_faces(self.bm, [outer])
         self.assertEqual(bridges(self.bm), 0)
         self.assertEqual(counts(self.bm), (8, 8, 1))

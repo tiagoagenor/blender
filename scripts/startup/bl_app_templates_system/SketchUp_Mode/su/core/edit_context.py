@@ -2,7 +2,8 @@
 """Group edit context (owner: B). Contract: PLANO.md §2.4-B. Minimal v1: a stack of object names.
 
 The root "Modelo" is the implicit bottom of the stack (never on it). `enter(obj)` opens a group
-(its parent chain must be the current context), `exit()` closes the innermost one.
+(its parent chain must be the current context), `exit()` closes the innermost one. Entering or
+leaving a context clears the selection (SketchUp).
 """
 
 import bpy
@@ -27,19 +28,24 @@ def enter(obj):
     if obj is None:
         return
     _STACK.append(obj.name)
-    events.emit("selection")
+    _clear_selection()
 
 
 def exit():
     if _STACK:
         _STACK.pop()
-        events.emit("selection")
+        _clear_selection()
 
 
 def exit_all():
     if _STACK:
         _STACK.clear()
-        events.emit("selection")
+        _clear_selection()
+
+
+def _clear_selection():
+    from . import selection
+    selection.clear()
 
 
 def is_in_context(obj):

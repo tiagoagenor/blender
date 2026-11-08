@@ -9,7 +9,7 @@ import math
 import os
 
 import bpy
-from mathutils import Euler, Vector
+from mathutils import Euler, Matrix, Vector
 
 V = Vector
 
@@ -157,4 +157,76 @@ def run(h):
     doc = document.root()
     h.check("AF-6 redo of AF-3: V8 A11 F4", counts() == (8, 11, 4), counts())
     h.check("validate() clean", geom.validate(doc.bm) == [], geom.validate(doc.bm))
+
+    # --- items 5–8: selection undo, fold, group, explode
+    selection = importlib.import_module(su.__name__ + ".core.selection")
+    geom.add_edge(doc.bm, V((0, 0, 3)), V((8, 0, 3)))           # heal front + top again
+    geom.add_edge(doc.bm, V((0, 0, 0)), V((8, 0, 0)))
+    with ctx():
+        doc.write(undo_key="undo.adjust")
+    h.check("box healed again: V8 A12 F6", counts() == (8, 12, 6), counts())
+    top = find_face((4, 3, 3))
+    top_ref = selection.Ref(doc.key, selection.FACE, top.index)
+    selection.set([top_ref])
+    with ctx():
+        doc.write(undo_key="undo.adjust")
+    geom.erase_faces(doc.bm, [doc.bm.faces[top_ref.index]])
+    with ctx():
+        doc.write(undo_key="undo.adjust", select=())
+    h.check("Excluir clears the selection", selection.is_empty())
+    with ctx():
+        bpy.ops.ed.undo()
+    yield 0.2
+    h.check("AF-6 undo restores face AND selection", counts() == (8, 12, 6) and selection.get() == {top_ref},
+            (counts(), selection.get()))
+    with ctx():
+        bpy.ops.ed.redo()
+    yield 0.2
+    h.check("AF-6 redo: face gone, selection empty", counts() == (8, 12, 5) and selection.is_empty())
+    with ctx():
+        bpy.ops.ed.undo()
+    yield 0.2
+    doc = document.root()
+    selection.clear()
+
+    # AC-MOV-5 (kernel): one top corner 1 m up → top folds into 2 planar triangles
+    corner = next(v for v in doc.bm.verts if (v.co - V((8, 6, 3))).length < 1e-6)
+    corner.co.z = 4.0
+    r = geom.ensure_planar(doc.bm, list(doc.bm.faces))
+    with ctx():
+        doc.write(undo_key="undo.adjust")
+    h.check("AC-MOV-5 fold: 1 fold edge, V8 A13 F7", len(r.new_edges) == 1 and counts() == (8, 13, 7), counts())
+    h.check("AC-MOV-5 all faces planar", all(geom.is_planar(f) for f in doc.bm.faces))
+    yield from shot("b_dobra")
+    with ctx():
+        bpy.ops.ed.undo()
+    yield 0.2
+    doc = document.root()
+    h.check("undo of fold: V8 A12 F6", counts() == (8, 12, 6), counts())
+
+    # Criar grupo with the top (double click = face + edges), lift the group 1 m
+    top = find_face((4, 3, 3))
+    refs = selection.expand_face(selection.Ref(doc.key, selection.FACE, top.index))
+    h.check("AC-SEL-1 double click: 1 face + 4 edges",
+            sum(x.kind == 'FACE' for x in refs) == 1 and sum(x.kind == 'EDGE' for x in refs) == 4)
+    three = selection.connected(refs[0])
+    h.check("AC-SEL-1 triple click: 6 faces + 12 edges",
+            sum(x.kind == 'FACE' for x in three) == 6 and sum(x.kind == 'EDGE' for x in three) == 12)
+    g = document.group_from(doc, [x.index for x in refs if x.kind == 'FACE'],
+                            [x.index for x in refs if x.kind == 'EDGE'], "Tampa")
+    g.obj.matrix_world = Matrix.Translation((0, 0, 1)) @ g.obj.matrix_world
+    with ctx():
+        g.write(undo_key=None)
+        doc.write(undo_key="undo.adjust")
+    h.check("group 'Tampa': V4 A4 F1; box V8 A12 F5", counts() == (8, 12, 5) and
+            (len(g.bm.verts), len(g.bm.edges), len(g.bm.faces)) == (4, 4, 1))
+    look((4, 3, 2), 24)
+    yield from shot("b_grupo_tampa")
+    g.obj.matrix_world = doc.world()
+    pdoc, res = document.explode(g.obj)
+    with ctx():
+        pdoc.write(undo_key="undo.adjust")
+    h.check("explode welds the top back: V8 A12 F6", counts() == (8, 12, 6), counts())
+    h.check("validate() clean at the end", geom.validate(doc.bm) == [], geom.validate(doc.bm))
+    yield from shot("b_explodir")
     h.log("screens:", shots)

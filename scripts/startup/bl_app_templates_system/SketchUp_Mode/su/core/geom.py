@@ -846,6 +846,89 @@ def merge_coplanar(bm, edges):
     return erase_edges(bm, pick) if pick else EditResult()
 
 
+# ------------------------------------------------------------------------------- planarity (fold)
+
+def _nonplanarity(cos):
+    if len(cos) <= 3:
+        return 0.0
+    n = mgeo.normal(cos)
+    if n.length < 0.5:
+        return math.inf
+    c = sum(cos, Vector()) / len(cos)
+    return max(abs(n.dot(p - c)) for p in cos)
+
+
+def _orient2(a, b, c):
+    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+
+def _proper_cross(a, b, c, d):
+    eps = 1e-12
+    d1, d2 = _orient2(a, b, c), _orient2(a, b, d)
+    d3, d4 = _orient2(c, d, a), _orient2(c, d, b)
+    return ((d1 > eps and d2 < -eps) or (d1 < -eps and d2 > eps)) and \
+           ((d3 > eps and d4 < -eps) or (d3 < -eps and d4 > eps))
+
+
+def _diagonal_ok(pts2, i, j):
+    k = len(pts2)
+    a, b = pts2[i], pts2[j]
+    for m in range(k):
+        m2 = (m + 1) % k
+        if m in (i, j) or m2 in (i, j):
+            continue
+        if _proper_cross(a, b, pts2[m], pts2[m2]):
+            return False
+    mid = ((a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5)
+    return _inside(mid, _loop_segs(pts2))
+
+
+def ensure_planar(bm, faces, tol=GEOM_TOL):
+    """Fold: split every non-planar face along visible diagonals until all pieces are planar.
+    Diagonal choice: both halves planar first, then the least non-planar split, then the shortest.
+    Pieces keep material/back side (face_split copies the face data). Returns new_edges (folds)
+    and new_faces (the extra pieces)."""
+    ensure_layers(bm)
+    res = EditResult()
+    todo = [f for f in faces if f.is_valid]
+    while todo:
+        f = todo.pop()
+        if not f.is_valid or len(f.verts) <= 3 or is_planar(f, tol):
+            continue
+        verts = list(f.verts)
+        cos = [v.co.copy() for v in verts]
+        n = mgeo.normal(cos)
+        if n.length < 0.5:
+            continue
+        u = n.orthogonal().normalized()
+        w = n.cross(u)
+        pts2 = [(p.dot(u), p.dot(w)) for p in cos]
+        k = len(verts)
+        best, best_key = None, None
+        for i in range(k):
+            for j in range(i + 2, k):
+                if i == 0 and j == k - 1:
+                    continue
+                if not _diagonal_ok(pts2, i, j):
+                    continue
+                n1 = _nonplanarity(cos[i:j + 1])
+                n2 = _nonplanarity(cos[j:] + cos[:i + 1])
+                worst = max(n1, n2)
+                key = (worst > tol, worst, (cos[i] - cos[j]).length)
+                if best_key is None or key < best_key:
+                    best, best_key = (i, j), key
+        if best is None:
+            continue
+        i, j = best
+        nf, loop = bmesh.utils.face_split(f, verts[i], verts[j])
+        res.new_edges.append(loop.edge)
+        res.new_faces.append(nf)
+        for g in (f, nf):
+            g.normal_update()
+            todo.append(g)
+    return res
+
+
 # -------------------------------------------------------------------------------------- validate
 
 def validate(bm, tol=GEOM_TOL):

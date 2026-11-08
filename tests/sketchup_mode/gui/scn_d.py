@@ -144,7 +144,8 @@ def run(h):
     h.check("tray: all sections closed", bpy.context.window_manager.su_tray.open_ids == "",
             bpy.context.window_manager.su_tray.open_ids)
     secs = [s for s, _ in tray.sections()]
-    h.check("tray sections (no P2)", secs == ["entity", "materials", "components", "styles", "scenes"], secs)
+    h.check("tray sections in SketchUp order (no tags)", secs == ["entity", "materials", "components", "styles",
+                                                                  "shadows", "scenes", "soften", "outliner"], secs)
     toolset = mod("ui.toolset")
     lts_expected = toolset.layout_lists()[0]
     h.check("LTS order + separators", toolset.lts_ids() == list(lts_expected), toolset.lts_ids())
@@ -235,6 +236,47 @@ def run(h):
     cyl_side = probe("cylinder side (no facets)", (-2.6 + 0.55 * math.cos(math.radians(-60)),
                                                    1.6 + 0.55 * math.sin(math.radians(-60)), 0.9), darkest=True)
     h.check("cylinder side without facet lines", cyl_side is not None and min(cyl_side) >= 120, cyl_side)
+    # ---- 4. selection display (§9.2-D item 4): face stipple, blue edges, group bbox
+    sel = mod("core.selection")
+    me = sc["box"].data
+    side = next(p.index for p in me.polygons if p.normal.x > 0.9)
+    side_edges = [me.edges[me.loops[li].edge_index].index for li in me.polygons[side].loop_indices]
+    refs = [sel.Ref("Caixa", "FACE", side)] + [sel.Ref("Caixa", "EDGE", e) for e in side_edges]
+    refs.append(sel.Ref("Cilindro", "OBJECT", 0))
+    sel.set(refs)
+    h.check("selection set", sel.count() == len(refs), sel.count())
+    area.tag_redraw()
+    yield 1.0
+    path2 = os.path.join(h.out_dir, "scn_d_sel.png")
+    h.screenshot(path2)
+    yield 0.5
+    shot2 = Shot(path2)
+    c = wxy((2.0, 1.5, 0.75))
+    blue_px = plain = 0
+    for dy in range(-12, 13):
+        for dx in range(-12, 13):
+            q = shot2.at(c[0] + dx, c[1] + dy)
+            if q is None:
+                continue
+            if q[2] > q[0] + 60:
+                blue_px += 1
+            elif near(q, (209, 209, 209), 14):
+                plain += 1
+    probes["selected face patch"] = {"blue": blue_px, "plain": plain}
+    h.check("selected face = blue dot screen (stipple)", blue_px >= 8 and plain >= 100, (blue_px, plain))
+
+    def bluest(xy, r=3):
+        best = None
+        for dy in range(-r, r + 1):
+            for dx in range(-r, r + 1):
+                q = shot2.at(xy[0] + dx, xy[1] + dy)
+                if q is not None and (best is None or q[2] - q[0] > best[2] - best[0]):
+                    best = q
+        return best
+    eb = bluest(wxy((2.0, 3.0, 0.75)))
+    probes["selected edge"] = eb
+    h.check("selected edge blue", eb is not None and eb[2] >= 180 and eb[0] <= 70, eb)
+    sel.clear()
     with open(os.path.join(h.out_dir, "probes.json"), "w", encoding="utf-8") as f:
         json.dump(probes, f, indent=1, ensure_ascii=False, default=str)
     h.check("screenshot written", os.path.isfile(path))

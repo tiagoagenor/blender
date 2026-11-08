@@ -8,7 +8,7 @@ its first draw, so the region has no category and no tab strip (the theme also h
 
     register_section(order, id, label_key, draw_fn, priority='P0')   # draw_fn(layout, context)
 
-Sections with priority P2 are not shown. Registering an existing id replaces it (D registers
+Sections with priority P2 are greyed rows (SHOW_P2_SECTIONS). Registering an existing id replaces it (D registers
 placeholder rows for the F/G sections until their owners register the real ones). All rows start
 CLOSED (2027 behaviour); the open set lives in `wm.su_tray.open_ids` (not saved: P2 = remember).
 """
@@ -22,9 +22,10 @@ from .. import icons
 ORDER = 550
 
 CATEGORY = "Bandeja"
-# PLANO §4.4 (decision R2 #9): P2 sections (Sombras, Suavizar arestas, Estruturador) do NOT appear.
-# True = show them as greyed rows ("Em breve") — only if the lead/user overrides the plan.
-SHOW_P2_SECTIONS = False
+# P2 sections (Sombras, Suavizar arestas, Estruturador) are shown as greyed rows in SketchUp's order
+# (lead's decision after M-A: "everything except tags equal to SketchUp"; overrides PLANO §4.4). Their
+# body says the feature is coming. Tags never appear.
+SHOW_P2_SECTIONS = True
 
 STRINGS = {
     "tray.title": "Bandeja padrão",
@@ -36,7 +37,7 @@ STRINGS = {
     "tray.close": "Fechar",
     "tray.placeholder.entity": "Nenhuma seleção",
     "tray.placeholder.materials": "Em uso no modelo",
-    "tray.placeholder.soon": "Em breve",
+    "tray.placeholder.soon": "Em breve.",
     "tray.shadows": "Sombras",
     "tray.soften": "Suavizar arestas",
     "tray.outliner": "Estruturador",

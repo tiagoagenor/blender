@@ -276,7 +276,7 @@ def polygon(dc, pts, rgba, *, stipple=False):
             sh.uniform_float("ModelViewProjectionMatrix", shaders.mvp())
             sh.uniform_float("color", tuple(rgba))
             sh.uniform_int("spacing", int(round(3 * ps)))
-            sh.uniform_int("dot_px", max(1, int(round(ps * 0.5))))
+            sh.uniform_int("dot_px", max(1, int(round(ps))))
             batch_for_shader(sh, 'TRIS', {"pos": coords}).draw(sh)
         else:
             u = shaders.builtin('UNIFORM_COLOR')

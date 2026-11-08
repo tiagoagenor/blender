@@ -62,18 +62,18 @@ class TestTray(unittest.TestCase):
         tray.unregister_section("test_x")
         tray.unregister_section("test_p2")
 
-    def test_default_sections_in_order_without_p2(self):
+    def test_default_sections_in_sketchup_order(self):
         ids = [s for s, _ in tray.sections()]
-        self.assertEqual(ids[:3], ["entity", "materials", "components"])
-        self.assertNotIn("shadows", ids)
-        self.assertNotIn("outliner", ids)
+        self.assertEqual(ids, ["entity", "materials", "components", "styles", "shadows", "scenes",
+                               "soften", "outliner"])
+        self.assertFalse(any("tag" in s or "etiqueta" in s for s in ids))
 
     def test_register_replace_and_p2(self):
         tray.register_section(45, "test_x", "tray.styles", lambda l, c: None)
         ids = [s for s, _ in tray.sections()]
         self.assertLess(ids.index("styles"), ids.index("test_x"))
         tray.register_section(45, "test_p2", "tray.styles", lambda l, c: None, priority='P2')
-        self.assertNotIn("test_p2", [s for s, _ in tray.sections()])
+        self.assertEqual("test_p2" in [s for s, _ in tray.sections()], tray.SHOW_P2_SECTIONS)
 
     def test_all_closed_by_default(self):
         self.assertFalse(tray.is_open("styles", bpy.context.window_manager))

@@ -6,7 +6,7 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 1. [x] `prims.py` (congela em M-A) e `shaders` (tracejado, stipple)
 2. [x] portar `draw_edges` → `edges.py` trocando o critério de ângulo por atributos (`su_bridge`/`su_hidden` nunca; `su_soft` só como silhueta); grupos/instâncias via `matrix_world`; cinza fora do contexto
 3. [~] GN "SU_Display" só com a cópia de verso, aplicado nos eventos `"load"` **e `"doc"`** (S-B: grupos, instâncias, Raio X)
-4. [~] portar céu, eixos, luz `.sl` (gravada em `bpy.app.tempdir`), view transform; seleção azul + stipple + bbox
+4. [x] portar céu, eixos, luz `.sl` (gravada em `bpy.app.tempdir`), view transform; seleção azul + stipple + bbox
 5. [x] portar `apply_theme`/`apply_prefs` (armadilhas: `_rna_xml`, `regions.sidebars`, `show_edge_resize=True`, vram em try) + ícones recoloridos + `_dim`
 6. [~] toolbar (grupos/flyouts §4.2), LTS (§4.3, G = Criar grupo), status bar (§3.4), Bandeja (§4.4) com `register_section`, menus (§4.5) com nomes do Apêndice A, menu do app, Configurações
 7. [x] `hide.py` (inclui glTF Variants; 82 painéis da região UI, filhos primeiro)
@@ -46,5 +46,10 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - 9.5: caixa Medidas branca com borda fina clara (`wcol_text.outline` 190,190,198), à direita (já do porte).
 - 9.6: pino cinza-claro e ⓘ preto fino próprios (`draw.ui_pin`/`draw.ui_info`, margem maior para caber ao lado do texto de 11 pt).
 - Arestas em monitor 1× (1080p externo): linha suavizada de 1 px saía cinza (102) → `lineSmooth` desligado quando `pixel_size < 1.5`; sonda preta (0,0,0) nos dois monitores.
-- Seções P2 da Bandeja (Sombras, Suavizar arestas, Estruturador): o pedido do coordenador conflita com a §4.4 (decisão R2 #9: seções P2 não aparecem). Implementado atrás de `tray.SHOW_P2_SECTIONS` (padrão **False**, como no plano); com True aparecem como linhas acinzentadas "Em breve".
+- Seções P2 da Bandeja (Sombras, Suavizar arestas, Estruturador): o pedido do coordenador conflita com a §4.4 (decisão R2 #9: seções P2 não aparecem). Implementado atrás de `tray.SHOW_P2_SECTIONS` (padrão **False**, como no plano); com True aparecem como linhas acinzentadas.
 - Print: `doc/sketchup_mode/screens/casca_v5.png`.
+
+## Entrega 3 — Bandeja completa + seleção (item 4)
+- Decisão do líder (sobrepõe §4.4): `tray.SHOW_P2_SECTIONS = True` — Bandeja na ordem do SketchUp: Informações da entidade, Materiais, Componentes, Estilos, **Sombras**, Cenas, **Suavizar arestas**, **Estruturador** (P2 = linhas acinzentadas; "Em breve." só no corpo aberto). Etiquetas nunca.
+- `su/draw/selection_draw.py` (camada SELECTION=30), lendo `core/selection` (B): face selecionada = retícula de pontos azuis (shader stipple, Metal OK), aresta selecionada = azul #0000FF 1 pt por cima da preta, objeto/grupo selecionado = caixa envolvente azul (objeto + descendentes, nos eixos do objeto), grupo aberto = caixa tracejada cinza. Redesenho no evento "selection".
+- scn_d: sondas de seleção (retícula azul na face, aresta azul 0,0,255). Print: `doc/sketchup_mode/screens/casca_v6.png`.

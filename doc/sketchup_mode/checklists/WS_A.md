@@ -36,9 +36,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 6. [x] session por eventos + `undo.init`; invariante sem objeto ativo
 7. [x] Linha (fatia) → passar a E (após M-A)
 8. [x] `testing.dispatch/hover/set_clock/state_dump/doc_stats`
-9. [~] `shot.sh` + `compare.sh`/`compose.py` (feitos) + sondas
-10. [ ] menus de contexto via Ctrl+clique e órbita Ctrl+Cmd no `Window` (com G)
-11. [ ] prefs com backup/restore + S-E (ida e volta de template, kill -9)
+9. [x] `shot.sh` + `compare.sh`/`compose.py` + sondas (`expected/colors.json`, `scn_sondas`: céu, horizonte, chão, cromo, status, Bandeja, verso, aresta; caixa frente/lateral/topo pendentes de E)
+10. [x] menus de contexto via Ctrl+clique e órbita Ctrl+Cmd no `Window` (com G) — `su.context_menu` (Ctrl+clique e RMB ocioso → menu de F `SU_MT_context`, PASS enquanto não existe); Ctrl+Cmd(+Option) arrastar → `su.view_orbit`, +Shift → `su.view_pan` (itens só entram quando os operadores de G existem)
+11. [x] prefs com backup/restore + S-E (`prefs.py`; `scn_prefs`: General ↔ SketchUp Mode; kill -9 = backup órfão em JSON vale como original)
 12. [ ] Integração contínua, rodadas de prints, CHECKLIST mestre
 
 ## Notas
@@ -62,3 +62,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - Prontidão: **D** (passos por timer) chama `session.hold("d.startup")` no `"load"` e `session.release("d.startup")` no último passo.
 - B, C e D integrados (até 0be0a33): Linha usa `Document`/`add_edge` (já roda `auto_faces`), `vcb.feed/parse` e `ENGINE.query` reais. `fakes.py` só entra para módulo ausente (hoje nenhum). Teclas que não são de ferramenta passam pelo modal sem cancelar (K funciona desenhando).
 - `scn_a` (27 checks): L sobre a Bandeja, hover → "Ponto de origem", Ctrl+clique não inicia, retângulo 3×2 pelas Medidas (1 face 6 m², normal −Z, 4 undos), MMB no meio da cadeia, `3` Enter sobre a Bandeja (modal) e `4` Enter ocioso (captura → Ajustar), Cmd+Z ×2. Prints: `doc/sketchup_mode/screens/a_*.png`.
+
+### Bloco 2 (notas)
+- `prefs.py` (ORDER 10): guarda os valores das prefs fora do swap do template (navegação, overlap, smooth view, `light_ambient`, status bar, mini eixo) em memória e em `<config>/sketchup_mode_prefs_backup.json`; restaura no `unregister` e no `exit_pre` (roda ANTES do salvamento automático de prefs ao sair). Donos que mexem em outra pref chamam `prefs.track(seção, attr)` antes.
+- `scn_casa` (ROTEIRO_CASA Parte 1): cada passo usa `testing.dispatch` nas projeções dos pontos 3D (inferência real), confere V/A/F, `validate`, planaridade, e grava `doc/sketchup_mode/screens/casa_passoN.png`; passo 11 = undo até o vazio e redo. Hoje: passo 0 ok, passo 1 para em "su.rectangle não registrado" (espera E/F/G).
+- Harness: timers persistentes (cenários podem trocar de arquivo/template); `probe()`/`load_png()` para sondas.

@@ -47,7 +47,7 @@ def _point(inf):
 
 
 @tool(ToolMeta(id=TOOL_ID, label_key="tool.su.line.label", icon="ops.gpencil.primitive_line", shortcut="L",
-               cursor='PAINT_CROSS', vcb_label_key="vcb.length", vcb_schema="length"))
+               cursor='PAINT_CROSS', vcb_label_key="vcb.length", vcb_schema="line"))
 class LineTool(BaseTool):
 
     def __init__(self):
@@ -122,9 +122,22 @@ class LineTool(BaseTool):
 
     # -- Measurements --------------------------------------------------------------------------------
     def vcb(self, tc, values):
-        if self.anchor is None or not values or kind_of(values[0]) not in LENGTH_KINDS:
+        if self.anchor is None or not values:
             return Result.PASS
-        length = value_of(values[0])
+        v = values[0]
+        if kind_of(v) in {"POINT_ABS", "POINT_REL"} and getattr(v, "vector", None) is not None:
+            a = self.anchor
+            if kind_of(v) == "POINT_ABS":      # [x;y;z] world point; empty component = anchor's
+                p = Vector([a[i] if c is None else c for i, c in enumerate(v.vector)])
+            else:                              # <dx;dy;dz> offset from the anchor
+                p = Vector([a[i] + (c or 0.0) for i, c in enumerate(v.vector)])
+            if (p - self.anchor).length <= constants.GEOM_TOL:
+                STATE.vcb_error = True
+                return Result.RUNNING
+            return self._commit(tc, p)
+        if kind_of(v) not in LENGTH_KINDS:
+            return Result.PASS
+        length = value_of(v)
         d = (self.current - self.anchor) if self.current is not None else Vector()
         if length <= 0.0 or d.length <= constants.GEOM_TOL:
             STATE.vcb_error = True

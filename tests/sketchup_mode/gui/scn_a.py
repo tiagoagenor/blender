@@ -47,7 +47,9 @@ def run(h):
     h.glide(*h.world_xy((1.0, 1.0, 0.0)))
     yield 0.4
     d = h.state()
-    h.check("hover gives an inference", d["inference"]["kind"] != "NONE", d["inference"])
+    base = __import__(h.su.__name__ + ".tools.base", fromlist=["x"])
+    h.check("hover gives an inference", d["inference"]["kind"] != "NONE",
+            (d["inference"], "hover events", base.HOVER_CALLS[0]))
     h.event('LEFTMOUSE', 'PRESS', ctrl=True)
     h.event('LEFTMOUSE', 'RELEASE', ctrl=True)
     yield 0.4

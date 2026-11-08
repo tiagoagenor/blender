@@ -3,8 +3,8 @@
 
 A tool is a BaseTool subclass declared with `@tool(ToolMeta(...))`. The platform turns every TOOL/NAV
 meta into a Blender WorkSpaceTool (`register_workspace_tools`, called by tools/catalog.py after all
-tool modules registered their strings) whose keymap is LEFTMOUSE PRESS/RELEASE → `su.tool_event`
-and whose widget is the hover gizmo group `SU_GGT_hover` (idle mouse moves → `tool.hover`).
+tool modules registered their strings) whose keymap is LEFTMOUSE PRESS/RELEASE → `su.tool_event`, plus
+MOUSEMOVE → `su.tool_event` for the idle hover (`tool.hover`; always PASS_THROUGH — see hover_from_event).
 
 EVENT SEMANTICS (contract):
  * keymap of every TOOL: LEFTMOUSE PRESS and RELEASE → su.tool_event (never ANY).
@@ -442,7 +442,11 @@ class Dispatcher:
         if r is None:
             r = Result.RUNNING if self.running else Result.IDLE
         if r is not Result.PASS:
+            was = self.running
             self.running = (r is Result.RUNNING)
+            if was and not self.running and ev.type not in MOVE_EVENTS:
+                _state.STATE.inference = _state.Inference.none()   # no stale marker/tooltip after the op
+                _state.STATE.redraw_viewport(tc.region)
         return r
 
     def _inference(self, tc, ctrl, ev, inf):
@@ -562,6 +566,7 @@ class Dispatcher:
             self._safe(ctrl.cancel, tc)
         self.running = False
         _state.STATE.locks = _state.Locks()
+        _state.STATE.inference = _state.Inference.none()
         _state.STATE.redraw_viewport(tc.region)
 
     def hover(self, tc, xy):
@@ -638,40 +643,20 @@ def is_running():
 
 # ---------------------------------------------------------------------------------------------- Blender tools
 
-class SU_GT_hover(bpy.types.Gizmo):
-    """Invisible gizmo: Blender calls test_select on every idle mouse move over the 3D region."""
-    bl_idname = "SU_GT_hover"
-
-    def setup(self):
-        pass
-
-    def draw(self, context):
-        pass
-
-    def test_select(self, context, location):
-        try:
-            tc = tool_context(context, xy=location)
-            DISPATCH.sync(tc)
-            if not DISPATCH.running:
-                DISPATCH.hover(tc, location)
-        except Exception:
-            perf.exception("hover gizmo")
-        return -1
+HOVER_CALLS = [0]      # idle hover events handled (diagnostics for GUI scenarios)
 
 
-class SU_GGT_hover(bpy.types.GizmoGroup):
-    bl_idname = "SU_GGT_hover"
-    bl_label = "SketchUp Mode hover"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'WINDOW'
-    bl_options = {'3D'}
+def hover_from_event(context, event):
+    """Idle MOUSEMOVE over the 3D region: tool keymap MOUSEMOVE → su.tool_event → here.
 
-    @classmethod
-    def poll(cls, context):
-        return active_tool_id(context) in TOOLS
-
-    def setup(self, context):
-        self.gizmos.new(SU_GT_hover.bl_idname)
+    The hover rides on the tool keymap (the operator returns PASS_THROUGH) instead of a gizmo's
+    test_select: gizmos are disabled in the mode's viewport (`space.show_gizmo = False`, D's style)."""
+    HOVER_CALLS[0] += 1
+    xy = (event.mouse_region_x, event.mouse_region_y)
+    tc = tool_context(context, xy=xy)
+    DISPATCH.sync(tc)
+    if not DISPATCH.running:
+        DISPATCH.hover(tc, xy)
 
 
 _bl_tools = []       # registered WorkSpaceTool classes
@@ -681,7 +666,8 @@ def tool_keymap(meta):
     if meta.kind == 'NAV':
         return ((meta.operator, {"type": 'LEFTMOUSE', "value": 'PRESS'}, None),)
     return (("su.tool_event", {"type": 'LEFTMOUSE', "value": 'PRESS'}, None),
-            ("su.tool_event", {"type": 'LEFTMOUSE', "value": 'RELEASE'}, None))
+            ("su.tool_event", {"type": 'LEFTMOUSE', "value": 'RELEASE'}, None),
+            ("su.tool_event", {"type": 'MOUSEMOVE', "value": 'ANY'}, None))
 
 
 def make_workspace_tool(meta, label):
@@ -693,7 +679,6 @@ def make_workspace_tool(meta, label):
         "bl_description": label,
         "bl_icon": meta.icon or "ops.generic.select",
         "bl_cursor": meta.cursor or 'DEFAULT',
-        "bl_widget": SU_GGT_hover.bl_idname,
         "bl_keymap": tool_keymap(meta),
     }
     return type("SU_WST_" + meta.id.replace(".", "_"), (bpy.types.WorkSpaceTool,), attrs)
@@ -732,15 +717,11 @@ def bl_tool(tool_id):
     return None
 
 
-_classes = (SU_GT_hover, SU_GGT_hover)
-
-
 def register():
-    registry.register_classes(_classes)
+    pass       # WorkSpaceTools are created by catalog.register; register() puts us in su._active
 
 
 def unregister():
     unregister_workspace_tools()
-    registry.unregister_classes(_classes)
     DISPATCH.reset()
     _instances.clear()

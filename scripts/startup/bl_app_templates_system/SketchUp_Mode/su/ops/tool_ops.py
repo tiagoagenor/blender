@@ -75,6 +75,12 @@ class SU_OT_tool_event(bpy.types.Operator):
         return _view3d_region(context) is not None
 
     def invoke(self, context, event):
+        if event.type in base.MOVE_EVENTS:
+            try:
+                base.hover_from_event(context, event)       # idle hover (tool keymap MOUSEMOVE)
+            except Exception:
+                perf.exception("su.tool_event hover")
+            return {'PASS_THROUGH'}
         if event.ctrl or event.value not in {'PRESS', 'DOUBLE_CLICK', 'RELEASE'}:
             return {'PASS_THROUGH'}
         region = context.region
@@ -267,13 +273,23 @@ def _field_get(_self):
     return STATE.vcb_buffer or STATE.vcb_value
 
 
+def _apply_text(text):
+    """C's vcb.apply_text → this applier (installed with vcb.set_applier)."""
+    base.DISPATCH.apply_vcb(base.tool_context(bpy.context), text)
+    return True
+
+
 def _field_set(_self, value):
     if _field_guard[0]:
         return
     _field_guard[0] = True
     try:
         if value.strip() and value != STATE.vcb_value:
-            base.DISPATCH.apply_vcb(base.tool_context(bpy.context), value)
+            vcb = registry.optional("core.vcb")
+            if vcb is not None and hasattr(vcb, "apply_text"):
+                vcb.apply_text(value)
+            else:
+                _apply_text(value)
     except Exception:
         perf.exception("Measurements field")
     finally:
@@ -296,10 +312,16 @@ def register():
     i18n.register_strings(STRINGS)
     registry.register_classes(_classes)
     bpy.types.WindowManager.su_vcb = PointerProperty(type=SU_PG_vcb)
+    vcb = registry.optional("core.vcb")
+    if vcb is not None and hasattr(vcb, "set_applier"):
+        vcb.set_applier(_apply_text)
 
 
 def unregister():
     _capture_running[0] = False
+    vcb = registry.optional("core.vcb")
+    if vcb is not None and hasattr(vcb, "set_applier"):
+        vcb.set_applier(None)
     if hasattr(bpy.types.WindowManager, "su_vcb"):
         del bpy.types.WindowManager.su_vcb
     registry.unregister_classes(_classes)

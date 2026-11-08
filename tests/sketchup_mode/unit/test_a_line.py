@@ -104,6 +104,17 @@ class TestLine(LineCase):
         self.assertEqual(st["bbox"], [[0.0, 0.0, 0.0], [4.0, 0.0, 0.0]])
         self.assertEqual(self.steps(), 2)            # segment + "Ajustar"
 
+    def test_absolute_and_relative_points(self):
+        testing.click((0, 0, 0))
+        testing.move((1, 0, 0))
+        sep = ";" if testing.registry.optional("core.units") is None or \
+            testing.registry.optional("core.units").list_sep(None) == ";" else ","
+        testing.type_text("[2{0}1{0}0]".format(sep))
+        testing.type_text("<0{0}0{0}3>".format(sep))
+        st = testing.doc_stats()
+        self.assertEqual(st["edges"], 2)
+        self.assertEqual(st["bbox"], [[0.0, 0.0, 0.0], [2.0, 1.0, 3.0]])
+
     def test_tool_change_clears_last_action(self):
         testing.click((0, 0, 0))
         testing.click((1, 0, 0))

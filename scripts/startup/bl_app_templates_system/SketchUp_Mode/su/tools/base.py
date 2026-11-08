@@ -404,14 +404,13 @@ class Dispatcher:
         tid = active_tool_id(tc.context)
         if tid == self.tool_id:
             return
-        if tid.startswith("su.") and tid not in TOOLS:
+        back = self.tool_id if self.tool_id in TOOLS else ''
+        if tid.startswith("su.") and tid not in TOOLS and back:
             # a disabled placeholder of the toolbar/LTS was clicked: "Em breve" and back to our tool
             catalog = registry.optional("tools.catalog")
             name = catalog.label(tid) if catalog is not None else tid
             _state.STATE.set_hint("app.coming_soon", name=name)
-            back = self.tool_id if self.tool_id in TOOLS else ''
-            if back:
-                registry.deferred(lambda: set_workspace_tool(back), 0.0)
+            registry.deferred(lambda: set_workspace_tool(back), 0.0)
             return
         self.set_tool(tc, tid)
 

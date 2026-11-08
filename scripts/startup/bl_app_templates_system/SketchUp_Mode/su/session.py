@@ -10,8 +10,9 @@ on_load_post (from su/__init__'s load_post handler):
   tool Selecionar (when registered), and ONE undo.push("undo.init") only if data changed after
   load_post (e.g. by timer-driven setup).
 Readiness: driver_namespace["su_ready"] becomes True after the post-load step, once no `hold()` is
-pending — e.g. D's timer-driven start-up calls session.hold("d.startup") on load and
-session.release("d.startup") at its last step. The GUI harness waits for su_ready.
+pending and, when D's ui/startup.py is loaded, after its driver_namespace["su_ui_ready"] (timer-driven
+layout/theme/start view). Other owners may delay it with hold(name)/release(name). The GUI harness
+waits for su_ready.
 on_depsgraph_update: documents changed by something other than our own writes (and not during a
 tool operation, which may preview-write) are invalidated (document.get(obj).invalidate()).
 """
@@ -51,9 +52,29 @@ def is_ready():
     return bool(_ns().get(READY_KEY))
 
 
+UI_READY_KEY = "su_ui_ready"      # D's ui/startup.py step chain (theme, layout, start view)
+UI_READY_TIMEOUT_S = 30.0
+_ui_wait = {"t": 0.0}
+
+
+def _ui_pending():
+    import sys
+    startup = sys.modules.get(__package__ + ".ui.startup")
+    return startup is not None and not bpy.app.background and not _ns().get(UI_READY_KEY)
+
+
 def _maybe_ready():
-    if _loaded[0] and not _holds:
-        _ns()[READY_KEY] = True
+    if not _loaded[0] or _holds:
+        return
+    if _ui_pending():
+        if _ui_wait["t"] < UI_READY_TIMEOUT_S:
+            _ui_wait["t"] += 0.2
+            registry.deferred(_maybe_ready, 0.2)
+        else:
+            perf.error("session: su_ui_ready not set after {:.0f}s".format(UI_READY_TIMEOUT_S))
+            _ns()[READY_KEY] = True
+        return
+    _ns()[READY_KEY] = True
 
 
 def fingerprint():
@@ -72,6 +93,7 @@ def clear_active_object():
 def on_load_post():
     _ns()[READY_KEY] = False
     _loaded[0] = False
+    _ui_wait["t"] = 0.0
     _own.clear()
     events.emit("load")
     clear_active_object()

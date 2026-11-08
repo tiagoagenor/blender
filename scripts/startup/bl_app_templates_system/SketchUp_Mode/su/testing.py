@@ -93,6 +93,19 @@ def hover(xy):
     return _state.STATE.inference
 
 
+def reset_model():
+    """Empty the root document "Modelo" (no undo step). For tests and scenarios."""
+    document = registry.optional("core.document")
+    if document is None:
+        return
+    if hasattr(document, "reset") and getattr(document, "FAKE", False):
+        document.reset()
+        return
+    doc = document.root()
+    doc.bm.clear()
+    doc.write(undo_key=None)
+
+
 def set_clock(fn=None):
     base.clock = fn if fn is not None else time.monotonic
 

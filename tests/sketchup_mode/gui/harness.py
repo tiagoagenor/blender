@@ -83,19 +83,75 @@ class Harness:
         return win, a, {r.type: r for r in a.regions}
 
     # ------------------------------------------------------------------ input (window coordinates, physical px)
+    _mouse = (0, 0)
+
     def event(self, type, value='NOTHING', x=None, y=None, **kw):
+        """Simulated event; without x/y it happens at the current (last moved-to) mouse position."""
         win = self.window()
         if x is None:
-            win.event_simulate(type, value, **kw)
-        else:
-            win.event_simulate(type, value, x=int(x), y=int(y), **kw)
+            x, y = self._mouse
+        win.event_simulate(type, value, x=int(x), y=int(y), **kw)
 
     def move(self, x, y):
+        self._mouse = (int(x), int(y))
         self.event('MOUSEMOVE', 'NOTHING', x, y)
 
-    def key(self, type, **kw):
-        self.event(type, 'PRESS', **kw)
+    def glide(self, x, y, steps=6):
+        """Several mouse moves from the current position to (x, y) (real-ish drag/hover path)."""
+        x0, y0 = self._mouse
+        for i in range(1, steps + 1):
+            self.move(x0 + (x - x0) * i / steps, y0 + (y - y0) * i / steps)
+
+    def key(self, type, unicode=None, **kw):
+        if unicode:
+            self.event(type, 'PRESS', unicode=unicode, **kw)
+        else:
+            self.event(type, 'PRESS', **kw)
         self.event(type, 'RELEASE', **kw)
+
+    def type_text(self, text, enter=True):
+        """Type characters (+ Enter) at the current mouse position."""
+        testing = importlib.import_module(SU_MODULE + ".testing")
+        for ch in text:
+            self.key(testing.key_type(ch), unicode=ch)
+        if enter:
+            self.key('RET')
+
+    def click(self, x=None, y=None, **kw):
+        if x is not None:
+            self.move(x, y)
+        self.event('LEFTMOUSE', 'PRESS', **kw)
+        self.event('LEFTMOUSE', 'RELEASE', **kw)
+
+    def world_xy(self, co):
+        """Window coordinates (physical px) of world point `co` in the main 3D view."""
+        from bpy_extras import view3d_utils
+        win, area, R = self.area_regions()
+        r = R['WINDOW']
+        rv3d = area.spaces.active.region_3d
+        p = view3d_utils.location_3d_to_region_2d(r, rv3d, co)
+        return r.x + int(round(p.x)), r.y + int(round(p.y))
+
+    # ------------------------------------------------------------------ su hooks
+    @property
+    def testing(self):
+        return importlib.import_module(SU_MODULE + ".testing")
+
+    def state(self):
+        return self.testing.state_dump()
+
+    def stats(self, doc_key=None):
+        return self.testing.doc_stats(doc_key)
+
+    def install_fakes(self):
+        """B/C/D modules not merged yet → the unit-test fakes (tests/sketchup_mode/unit/fakes.py)."""
+        unit = os.path.join(os.path.dirname(HERE), "unit")
+        if unit not in sys.path:
+            sys.path.insert(0, unit)
+        fakes = importlib.import_module("fakes")
+        names = fakes.install(SU_MODULE)
+        self.log("fakes installed:", names)
+        return names
 
     def region_xy(self, region, fx, fy):
         """Window coordinates of the point at fractions (fx, fy) of `region`."""

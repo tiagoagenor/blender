@@ -162,10 +162,8 @@ class LineTool(BaseTool):
         doc = _document()
         inv = doc.world().inverted()
         a, b = inv @ self.anchor, inv @ p
-        res = geom.add_edge(doc.bm, a, b)
-        faces = list(getattr(res, "new_faces", None) or [])
-        if not faces and hasattr(geom, "auto_faces"):
-            faces = list(geom.auto_faces(doc.bm, getattr(res, "new_edges", None) or []) or [])
+        res = geom.add_edge(doc.bm, a, b)          # welds, splits crossings and runs auto_faces
+        faces = [f for f in res.new_faces if f.is_valid]
         doc.write(undo_key="tool.su.line.undo")
         self.last_seg = (doc.key, Vector(self.anchor), Vector(p))
         STATE.last_action = LastAction(tool_id=TOOL_ID, schema=self.meta.vcb_schema, reapply=self._reapply)

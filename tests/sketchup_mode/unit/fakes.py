@@ -121,7 +121,7 @@ def _make_geom(pkg):
         if e is not None:
             return EditResult(new_v, [], [])
         e = bm.edges.new((va, vb))
-        return EditResult(new_v, [e], [])
+        return EditResult(new_v, [e], auto_faces(bm, [e]))
 
     def _path(start, goal, skip):
         prev = {start: None}
@@ -212,7 +212,71 @@ def _make_vcb(pkg):
     return m
 
 
-MAKERS = {"core.document": _make_document, "core.geom": _make_geom, "core.vcb": _make_vcb}
+def _make_inference(pkg):
+    """Endpoint (doc vertices + origin, 12 px) > axis from the anchor (9 px) > ground/anchor plane."""
+    state = sys.modules[pkg + ".core.state"]
+    m = types.ModuleType(pkg + ".core.inference")
+    m.FAKE = True
+    from bpy_extras import view3d_utils
+    from mathutils import geometry
+
+    class QueryCtx:
+        def __init__(self, region=None, rv3d=None, xy=(0, 0), depsgraph=None, anchor=None, anchor_normal=None,
+                     plane=None, line=None, flags=None, exclude=frozenset(), skip=None, locks=None, previous=None):
+            self.__dict__.update(locals())
+            del self.__dict__["self"]
+
+    class Engine:
+        def query(self, q):
+            if q.region is None or q.rv3d is None:
+                return state.Inference.none()
+            xy = Vector(q.xy)
+            scale = bpy.context.preferences.system.ui_scale or 1.0
+
+            def px(co):
+                p = view3d_utils.location_3d_to_region_2d(q.region, q.rv3d, co)
+                return None if p is None else (p - xy).length
+
+            pts = [Vector((0.0, 0.0, 0.0))]
+            document = sys.modules.get(pkg + ".core.document")
+            if document is not None:
+                doc = document.root()
+                mw = doc.world()
+                pts += [mw @ v.co for v in doc.bm.verts]
+            best = min(((px(p), p) for p in pts if px(p) is not None), default=(None, None), key=lambda t: t[0])
+            if best[0] is not None and best[0] <= 12 * scale:
+                kind = "ORIGIN" if best[1].length < 1e-9 else "ENDPOINT"
+                return state.Inference(kind=kind, point=best[1].copy(), screen=tuple(q.xy))
+            origin = view3d_utils.region_2d_to_origin_3d(q.region, q.rv3d, xy)
+            ray = view3d_utils.region_2d_to_vector_3d(q.region, q.rv3d, xy)
+            if q.anchor is not None:
+                a = Vector(q.anchor)
+                for name, d in (("AXIS_X", Vector((1, 0, 0))), ("AXIS_Y", Vector((0, 1, 0))),
+                                ("AXIS_Z", Vector((0, 0, 1)))):
+                    r = geometry.intersect_line_line(a, a + d, origin, origin + ray)
+                    if r is None:
+                        continue
+                    p = r[0]
+                    dist = px(p)
+                    if dist is not None and dist <= 9 * scale and (p - a).length > 1e-6:
+                        return state.Inference(kind="FREE", point=p, linear=name, direction=d, ref_point=a,
+                                               screen=tuple(q.xy))
+            co = Vector(q.anchor) if q.anchor is not None else Vector((0.0, 0.0, 0.0))
+            p = geometry.intersect_line_plane(origin, origin + ray, co, Vector((0, 0, 1)))
+            if p is None:
+                return state.Inference.none()
+            return state.Inference(kind="FREE", point=p, screen=tuple(q.xy))
+
+        def acquire_tick(self, inf, t):
+            pass
+
+    m.QueryCtx = QueryCtx
+    m.ENGINE = Engine()
+    return m
+
+
+MAKERS = {"core.document": _make_document, "core.geom": _make_geom, "core.vcb": _make_vcb,
+          "core.inference": _make_inference}
 
 
 def install(pkg="su", only=None):

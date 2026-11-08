@@ -29,9 +29,7 @@ class LineCase(unittest.TestCase):
         base.DISPATCH.reset()
         base._instances.pop(LINE, None)
         state.STATE.reset()
-        document = registry.optional("core.document")
-        if hasattr(document, "reset"):
-            document.reset()
+        testing.reset_model()
         testing.dispatch(testing.ev('MOUSEMOVE', 'NOTHING'), LINE, testing.pt(0, 0))
         self.serial0 = bpy.context.scene.su_undo_serial
 

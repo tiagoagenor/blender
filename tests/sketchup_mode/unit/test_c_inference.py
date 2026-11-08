@@ -435,6 +435,48 @@ class TestShapes(_Base):
         self.assertAlmostEqual(abs(bulge), 0.4, places=6)
 
 
+class TestLowCameraLine(_Base):
+    """Regression (A): Linha started on the red axis at (4,0,0) — not on a vertex — with a near-horizontal
+    camera (default view pitch ≈ 6.6°) got its next point off the ground (z ≈ 0.15): the free point used
+    the vertical plane facing the camera. Free points after a click must stay on the anchor's horizontal
+    plane; the start point and the red-axis point must be exact."""
+
+    def setUp(self):
+        super().setUp()
+        self.region = F.FakeRegion(1000, 800)
+        target = Vector((3.0, 1.0, 0.8))
+        pitch, yaw, dist = math.radians(6.6), math.radians(33.0), 11.5
+        back = Vector((math.sin(yaw), -math.cos(yaw), 0.0)) * math.cos(pitch) + Vector((0, 0, math.sin(pitch)))
+        self.rv3d = F.FakeRV3D(target + back * dist, target, self.region)
+
+    def test_start_and_free_point_on_ground(self):
+        start = self.query(self.xy((4, 0, 0), 0.4, 0.3))
+        self.assertEqual(start.kind, "FREE")
+        self.assertAlmostEqual(start.point.z, 0.0, places=9)
+        a = Vector((4, 0, 0))
+        for target in ((6.0, 1.7, 0.0), (5.2, -2.5, 0.0), (6.5, 3.0, 0.0)):
+            inf = self.query(self.xy(target), anchor=a)
+            self.assertEqual(inf.linear, "", target)
+            self.assertAlmostEqual(inf.point.z, 0.0, places=9, msg=target)
+            self.assertVec(inf.point, target, 1e-3)
+
+    def test_red_axis_exact(self):
+        a = Vector((4, 0, 0))
+        inf = self.query(self.xy((7, 0, 0), 1, 2), anchor=a)
+        self.assertEqual(inf.linear, "AXIS_X")
+        self.assertAlmostEqual(inf.point.y, 0.0, places=9)
+        self.assertAlmostEqual(inf.point.z, 0.0, places=9)
+        typed = a + inf.direction * 3.0            # what Linha does with "3"
+        self.assertVec(typed, (7, 0, 0), 1e-9)
+
+    def test_above_horizon_uses_vertical_plane(self):
+        a = Vector((4, 0, 0))
+        inf = self.query((500, 790), anchor=a)       # near the top edge: above the horizon
+        self.assertEqual(inf.kind, "FREE")
+        self.assertGreater(inf.point.z, 0.0)
+        self.assertTrue(math.isfinite(inf.point.length))
+
+
 class TestGroupContext(_Base):
     def test_point_in_group_is_labelled(self):
         try:

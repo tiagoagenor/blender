@@ -46,6 +46,7 @@ PRIORITY = {"ENDPOINT": 0, "MIDPOINT": 1, "INTERSECTION": 2, "CENTER": 3, "GUIDE
 AXIS_NAMES = ("AXIS_X", "AXIS_Y", "AXIS_Z")
 ARROW_LOCKS = {"RIGHT_ARROW": "AXIS_X", "LEFT_ARROW": "AXIS_Y", "UP_ARROW": "AXIS_Z", "DOWN_ARROW": "PARALLEL"}
 ALIGN_COS = math.cos(math.radians(0.05))     # direction "is" an axis
+FREE_MAX_FACTOR = 20.0                       # free point on the anchor's horizontal plane: max distance / eye distance
 TOOLTIP_KEYS = {
     "ENDPOINT": "inf.endpoint", "MIDPOINT": "inf.midpoint", "ON_EDGE": "inf.on_edge", "ON_FACE": "inf.on_face",
     "INTERSECTION": "inf.intersection", "CENTER": "inf.center", "ORIGIN": "inf.origin",
@@ -554,9 +555,15 @@ class InferenceEngine:
     def _free(self, q, o, d):
         origin, axes = context_axes()
         if q.anchor is not None:
+            # Free point after a click: on the horizontal plane (of the context) through the anchor, as in
+            # SketchUp (drawing on the ground stays on the ground). Only when that plane is not hit (cursor
+            # above the horizon) or the hit is absurdly far, use the vertical plane facing the camera.
             a = Vector(q.anchor)
             vd = _view_dir(q.rv3d)
-            n = max(axes, key=lambda x: abs(x.dot(vd)))
+            p = _ray_plane(o, d, a, axes[2])
+            if p is not None and (p - a).length <= FREE_MAX_FACTOR * max((o - a).length, 1e-3):
+                return Inference(kind="FREE", point=p, plane=(a.copy(), axes[2].copy()))
+            n = max(axes[:2], key=lambda x: abs(x.dot(vd)))
             p = _ray_plane(o, d, a, n)
             if p is None:
                 p = _ray_plane(o, d, a, vd)

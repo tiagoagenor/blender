@@ -288,7 +288,9 @@ def polygon(dc, pts, rgba, *, stipple=False):
             ps = bpy.context.preferences.system.pixel_size
             sh.bind()
             sh.uniform_float("ModelViewProjectionMatrix", shaders.mvp())
-            sh.uniform_float("color", tuple(rgba))
+            # custom shader output is taken as linear (the built-ins convert sRGB themselves)
+            lin = tuple(colors._to_linear(c) for c in rgba[:3]) + (rgba[3],)
+            sh.uniform_float("color", lin)
             sh.uniform_int("spacing", int(round(3 * ps)))
             sh.uniform_int("dot_px", max(1, int(round(ps))))
             batch_for_shader(sh, 'TRIS', {"pos": coords}).draw(sh)

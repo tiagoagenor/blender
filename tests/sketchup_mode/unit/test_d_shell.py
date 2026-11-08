@@ -221,6 +221,75 @@ class TestDisplayGN(unittest.TestCase):
             bpy.data.meshes.remove(me)
 
 
+class TestHiddenFaces(unittest.TestCase):
+    """Ocultar (F's face BOOL `su_hidden_face`): the GN collapses hidden faces keeping count/order."""
+
+    def setUp(self):
+        self.gn = importlib.import_module("su.draw.display_gn")
+        self.ob, *_ = _box_with_lines()
+        me = self.ob.data
+        self.top = next(p.index for p in me.polygons if p.normal.z > 0.9)
+        a = me.attributes.new("su_hidden_face", 'BOOLEAN', 'FACE')
+        a.data[self.top].value = True
+        self.gn.ensure(self.ob)
+
+    def tearDown(self):
+        self.gn.set_show_hidden(False)
+        me = self.ob.data
+        for o in [o for o in bpy.data.objects if o.data == me]:
+            bpy.data.objects.remove(o)
+        bpy.data.meshes.remove(me)
+
+    def _eval(self, ob=None):
+        ob = ob or self.ob
+        return ob.evaluated_get(bpy.context.evaluated_depsgraph_get()).data
+
+    def test_collapse_keeps_count_and_order(self):
+        me = self.ob.data
+        n = len(me.polygons)
+        ev = self._eval()
+        self.assertEqual(len(ev.polygons), 2 * n)
+        self.assertLess(ev.polygons[self.top].area, 1e-9)
+        self.assertLess(ev.polygons[n + self.top].area, 1e-9)
+        for i, p in enumerate(me.polygons):
+            if i != self.top:
+                self.assertAlmostEqual(ev.polygons[i].area, p.area, places=5)
+                self.assertLess((ev.polygons[i].center - p.center).length, 1e-5)
+
+    def test_show_hidden_geometry(self):
+        self.gn.set_show_hidden(True)
+        self.assertGreater(self._eval().polygons[self.top].area, 0.1)
+        self.gn.set_show_hidden(False)
+        self.assertLess(self._eval().polygons[self.top].area, 1e-9)
+
+    def test_back_faces_and_hidden_triangles(self):
+        me = self.ob.data
+        pos, _col = self.gn.back_triangles(me)
+        me.calc_loop_triangles()
+        hidden_tris = sum(1 for t in me.loop_triangles if t.polygon_index == self.top)
+        self.assertEqual(len(pos), 3 * (len(me.loop_triangles) - hidden_tris))
+        self.assertEqual(len(self.gn.hidden_triangles(me)), 3 * hidden_tris)
+
+    def test_component_instances_get_the_modifier(self):
+        inst = self.ob.copy()                          # shared mesh, like B's component instances
+        bpy.context.scene.collection.objects.link(inst)
+        inst.modifiers.clear()
+        self.gn.ensure(inst)
+        self.assertIsNotNone(inst.modifiers.get(self.gn.MODIFIER))
+        self.assertEqual(len(self._eval(inst).polygons), 2 * len(self.ob.data.polygons))
+
+    def test_soft_edge_next_to_hidden_face_is_drawn(self):
+        edges = importlib.import_module("su.draw.edges")
+        me = self.ob.data
+        top_edges = set(me.polygons[self.top].edge_keys)
+        e = next(e for e in me.edges if e.key in top_edges)
+        soft = me.attributes.new("su_soft", 'BOOLEAN', 'EDGE')
+        soft.data[e.index].value = True
+        d = edges.edge_classes(me)
+        self.assertTrue(d["always"][e.index])
+        self.assertFalse(d["profile"][e.index])
+
+
 class TestDisplayGNSlots(unittest.TestCase):
     def test_ensure_uses_f_materials_when_loaded(self):
         import sys

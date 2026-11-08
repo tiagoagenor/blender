@@ -7,6 +7,8 @@ draws on a flat face has 0° and must show):
   * `su_soft` → only as a PROFILE (silhouette): the two faces lie on opposite sides w.r.t. the camera
     (the outline of a cylinder, as in SketchUp); a soft edge with < 2 faces is drawn;
   * everything else → always. Meshes without these attributes draw all their edges.
+  * hidden FACES (`su_hidden_face`, collapsed by the GN) keep their edges, as in SketchUp; a soft edge
+    next to a hidden face is drawn always (it borders the visible surface).
 Black 1 pt `POLYLINE_UNIFORM_COLOR`, depth LESS_EQUAL with the spike's polygon-offset projection.
 Uses the ORIGINAL mesh (`obj.original.data`), not the evaluated one (the GN back copy doubles faces).
 Groups/instances: every depsgraph object instance, drawn with its `matrix_world` (batches are in local
@@ -129,6 +131,12 @@ def edge_classes(me):
     soft = _edge_bool(me, "su_soft", E)
     shown = ~(bridge | hidden)
     profile = shown & soft & (counts >= 2)
+    hf = np.zeros(P, dtype=bool)                  # hidden faces (Ocultar, F): a soft edge next to one
+    a = me.attributes.get("su_hidden_face")       # borders the visible surface → drawn always
+    if a is not None and a.domain == 'FACE' and a.data_type == 'BOOLEAN' and P:
+        a.data.foreach_get("value", hf)
+        nxt = (f0 >= 0) & hf[np.maximum(f0, 0)] | (f1 >= 0) & hf[np.maximum(f1, 0)]
+        profile &= ~nxt
     always = shown & ~profile
     return dict(co=co.reshape(-1, 3), ev=ev.reshape(-1, 2), f0=f0, f1=f1, fn=fn.reshape(-1, 3),
                 fc=fc.reshape(-1, 3), always=always, profile=profile)

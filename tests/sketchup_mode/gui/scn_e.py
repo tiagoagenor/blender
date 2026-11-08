@@ -9,6 +9,7 @@ Parts (all by default; `shot.sh scn_e:<part>` / SU_SHOT_VARIANT=a,b runs some):
   linha      AC-LIN-3 (cura do topo), AC-LIN-5 (laço vertical por eixos + Medidas).
   sigame     AC-SIG-2 (moldura: topo pré-selecionado = perímetro).
   parte2     ROTEIRO_CASA Parte 2 (paredes de 15 cm, porta passante).
+  promovidas Retângulo girado, Arco de três pontos, Pizza, Desenho à mão livre.
 Screenshots: <out_dir>/e_*.png (copied to doc/sketchup_mode/screens/ by hand, reduced with sips)."""
 
 import os
@@ -591,8 +592,104 @@ def part_parte2(h):
     h.check("single window (no popup)", len(bpy.context.window_manager.windows) == 1)
 
 
+def _use(h, tool_id):
+    _mod(h, "tools.base").set_workspace_tool(tool_id)
+    yield 0.4
+    h.check(tool_id + " active", h.state()["tool"] == tool_id, h.state()["tool"])
+
+
+def part_promovidas(h):
+    """Tools promoted from P2: Retângulo girado, Arco de três pontos, Pizza, Desenho à mão livre."""
+    ts = _mod(h, "ui.toolset")
+    for tid in ("su.rotated_rectangle", "su.arc3", "su.pie", "su.freehand"):
+        h.check(tid + " enabled in the toolset", ts.is_enabled(tid), ts.priority(tid))
+    doc = _mod(h, "core.document").root()
+    # Retângulo girado: edge (0,0,0)–(3,0,0), then width 2 at 45°
+    yield from _fresh(h, (1.5, -0.6, 0.7), 9.0)
+    yield from _use(h, "su.rotated_rectangle")
+    h.glide(*h.world_xy((0.0, 0.0, 0.0)))
+    yield 0.4
+    h.click()
+    yield 0.3
+    h.glide(*h.world_xy((3.0, 0.0, 0.0)))
+    yield 0.4
+    h.type_text("3")                                 # first edge: 3 m along the cursor direction (red)
+    yield 0.4
+    h.glide(*h.world_xy((3.0, 1.0, 0.6)))
+    yield 0.4
+    yield from _settle(h, park=False)
+    h.screenshot(os.path.join(h.out_dir, "e_retangulo_girado_preview.png"))
+    yield 0.2
+    h.type_text("2;45")
+    yield 0.6
+    st = h.stats()
+    n = st.get("normals") or [[0, 0, 0]]
+    h.check("Retângulo girado: 1 face 3×2 inclinada 45°", _counts(h) == (4, 4, 1) and abs(st.get("area", 0) - 6.0) < 1e-3
+            and abs(abs(n[0][2]) - 0.7071) < 1e-3, (st.get("area"), n))
+    yield from _settle(h)
+    h.screenshot(os.path.join(h.out_dir, "e_retangulo_girado.png"))
+    yield 0.2
+    # Arco de três pontos
+    yield from _fresh(h, (1.0, 0.5, 0.0), 7.0)
+    yield from _use(h, "su.arc3")
+    for p in ((0.0, 0.0, 0.0), (1.0, 1.0, 0.0), (2.0, 0.0, 0.0)):
+        h.glide(*h.world_xy(p))
+        yield 0.4
+        h.click()
+        yield 0.3
+    h.check("Arco de três pontos: 12 segmentos", _counts(h) == (13, 12, 0), _counts(h))
+    yield from _settle(h)
+    h.screenshot(os.path.join(h.out_dir, "e_arco3p.png"))
+    yield 0.2
+    # Pizza: center, start, 90°
+    yield from _fresh(h, (1.0, 1.0, 0.0), 7.0)
+    yield from _use(h, "su.pie")
+    h.glide(*h.world_xy((0.0, 0.0, 0.0)))
+    yield 0.4
+    h.click()
+    yield 0.3
+    h.glide(*h.world_xy((2.0, 0.0, 0.0)))
+    yield 0.4
+    h.click()
+    yield 0.3
+    h.glide(*h.world_xy((1.2, 1.6, 0.0)))
+    yield 0.4
+    h.type_text("90")
+    yield 0.6
+    h.check("Pizza: setor de 90° = 1 face", _counts(h) == (14, 14, 1), _counts(h))
+    yield from _settle(h)
+    h.screenshot(os.path.join(h.out_dir, "e_pizza.png"))
+    yield 0.2
+    # Desenho à mão livre: a closed loop dragged with the mouse
+    yield from _fresh(h, (0.0, 0.0, 0.0), 7.0)
+    yield from _use(h, "su.freehand")
+    import math
+    pts = [(1.5 * math.cos(a * math.pi / 24), 1.0 * math.sin(a * math.pi / 24) + 0.2 * math.sin(a * math.pi / 6), 0.0)
+           for a in range(49)]
+    h.glide(*h.world_xy(pts[0]))
+    yield 0.3
+    h.event('LEFTMOUSE', 'PRESS')
+    yield 0.1
+    for p in pts[1:]:
+        h.move(*h.world_xy(p))
+        yield 0.03
+    h.event('LEFTMOUSE', 'RELEASE')
+    yield 0.6
+    st = h.stats()
+    h.check("Mão livre: laço fechado vira face", (st.get("faces") or 0) >= 1 and st.get("non_planar") == 0,
+            (_counts(h), st.get("area")))
+    lay = _mod(h, "core.geom").layers(doc.bm)
+    h.check("Mão livre: uma curva", len({e[lay.curve] for e in doc.bm.edges}) == 1, "")
+    yield from _settle(h)
+    h.screenshot(os.path.join(h.out_dir, "e_maolivre.png"))
+    yield 0.2
+    d = h.state()
+    h.check("no active object", d["active_object"] is None, d["active_object"])
+    h.check("single window (no popup)", len(bpy.context.window_manager.windows) == 1)
+
+
 PARTS = [("retangulo", part_retangulo), ("casa", part_casa), ("encaixe", part_encaixe), ("linha", part_linha),
-         ("sigame", part_sigame), ("parte2", part_parte2)]
+         ("sigame", part_sigame), ("parte2", part_parte2), ("promovidas", part_promovidas)]
 
 
 def run(h):

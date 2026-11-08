@@ -32,6 +32,16 @@ STRINGS = {
     "tool.su.arc.hint_start": {"pt_BR": "Selecione o ponto inicial.", "en": "Select start point."},
     "tool.su.arc.hint_end": {"pt_BR": "Selecione o ponto final ou digite o ângulo.", "en": "Select end point or enter angle."},
     "tool.su.arc.undo": {"pt_BR": "Arco", "en": "Arc"},
+    "tool.su.pie.label": {"pt_BR": "Pizza", "en": "Pie"},
+    "tool.su.pie.hint_center": {"pt_BR": "Selecione o ponto central.", "en": "Select center point."},
+    "tool.su.pie.hint_start": {"pt_BR": "Selecione o ponto inicial.", "en": "Select start point."},
+    "tool.su.pie.hint_end": {"pt_BR": "Selecione o ponto final ou digite o ângulo.", "en": "Select end point or enter angle."},
+    "tool.su.pie.undo": {"pt_BR": "Pizza", "en": "Pie"},
+    "tool.su.arc3.label": {"pt_BR": "Arco de três pontos", "en": "3 Point Arc"},
+    "tool.su.arc3.hint_start": {"pt_BR": "Selecione o ponto inicial.", "en": "Select start point."},
+    "tool.su.arc3.hint_pivot": {"pt_BR": "Selecione o segundo ponto do arco.", "en": "Select second point on arc."},
+    "tool.su.arc3.hint_end": {"pt_BR": "Selecione o ponto final.", "en": "Select end point."},
+    "tool.su.arc3.undo": {"pt_BR": "Arco de três pontos", "en": "3 Point Arc"},
 }
 
 
@@ -333,6 +343,10 @@ class ArcCenterTool(BaseTool):
     (radius; typed length), end point (angle; 15° snap; typed angle in degrees). `Ns` = segments, typed
     before the start point (the angle step parses angles only)."""
 
+    BASE_META = _ARC_META
+    PREFIX = "tool.su.arc"
+    PIE = False
+
     def __init__(self):
         self.segments = constants.ARC_SEGMENTS
         self.reset()
@@ -347,18 +361,18 @@ class ArcCenterTool(BaseTool):
 
     def _schema(self, schema, label):
         from dataclasses import replace
-        self.meta = replace(_ARC_META, vcb_schema=schema, vcb_label_key=label)   # instance override
+        self.meta = replace(self.BASE_META, vcb_schema=schema, vcb_label_key=label)   # instance override
 
     def update_status(self):
         if self.c is None:
-            STATE.set_hint("tool.su.arc.hint_center")
+            STATE.set_hint(self.PREFIX + ".hint_center")
             STATE.set_vcb("vcb.radius", STATE.vcb_value)
         elif self.s is None:
-            STATE.set_hint("tool.su.arc.hint_start")
+            STATE.set_hint(self.PREFIX + ".hint_start")
             r = (self.cur - self.c).length if self.cur is not None else 0.0
             STATE.set_vcb("vcb.radius", fmt_length(r))
         else:
-            STATE.set_hint("tool.su.arc.hint_end")
+            STATE.set_hint(self.PREFIX + ".hint_end")
             from .base import units
             u = registry.optional("core.units")
             txt = u.format_angle(abs(self.angle), units()) if u is not None else "{:.1f}".format(math.degrees(abs(self.angle)))
@@ -495,16 +509,23 @@ class ArcCenterTool(BaseTool):
         pts = geom.arc_points(self.c, n, self.s, abs(angle), self.segments)
         cid = entities.new_curve_id(doc)
         geom.add_polyline(doc.bm, [inv @ p for p in pts], False, curve_id=cid)
+        if self.PIE:                                  # Pizza: the two radii close the face
+            geom.add_edge(doc.bm, inv @ self.c, inv @ pts[0])
+            geom.add_edge(doc.bm, inv @ pts[-1], inv @ self.c)
         sc = mw.to_scale()
         k = ((abs(sc.x) + abs(sc.y) + abs(sc.z)) / 3.0) or 1.0
         c = inv @ self.c
         nl = (mw.to_3x3().inverted().transposed() @ self.n).normalized()
         entities.set_curve_meta(doc, cid, {"kind": "arc", "center": [c.x, c.y, c.z], "normal": [nl.x, nl.y, nl.z],
                                            "radius": (self.s - self.c).length / k, "segments": self.segments})
-        doc.write(undo_key="tool.su.arc.undo")
+        doc.write(undo_key=self.PREFIX + ".undo")
         self.reset()
         STATE.locks.axis = ''
         self.update_status()
+        u = registry.optional("core.units")
+        from .base import units
+        STATE.set_vcb("vcb.angle", u.format_angle(abs(angle), units()) if u is not None
+                      else "{:.1f}".format(math.degrees(abs(angle))))      # the last value stays visible
         return Result.IDLE
 
     def draw_3d(self, dc):
@@ -522,6 +543,162 @@ class ArcCenterTool(BaseTool):
             n = self.n if self.angle > 0 else -self.n
             pts = geom.arc_points(self.c, n, self.s, abs(self.angle), self.segments)
             prims.lines(dc, list(zip(pts, pts[1:])), rgba)
+            if self.PIE:
+                prims.line(dc, self.c, pts[-1], rgba)
+
+
+
+PIE_TOOL_ID = "su.pie"
+_PIE_META = ToolMeta(id=PIE_TOOL_ID, label_key="tool.su.pie.label", icon="ops.gpencil.edit_bend",
+                     cursor='PAINT_CROSS', vcb_label_key="vcb.radius", vcb_schema="arc", priority='P1')
+
+
+@tool(_PIE_META)
+class PieTool(ArcCenterTool):
+    """Pizza (promoted from P2): Arco (centro) closed by the two radii → a face (sector)."""
+    BASE_META = _PIE_META
+    PREFIX = "tool.su.pie"
+    PIE = True
+
+
+ARC3_TOOL_ID = "su.arc3"
+
+
+def circle_through(a, b, c):
+    """(center, normal) of the circle through three points, or None when they are collinear."""
+    ab, ac = b - a, c - a
+    n = ab.cross(ac)
+    if n.length <= 1e-9 * max(ab.length * ac.length, 1e-12):
+        return None
+    center = a + (n.cross(ab) * ac.length_squared + ac.cross(n) * ab.length_squared) / (2.0 * n.length_squared)
+    return center, n.normalized()
+
+
+def arc3_points(a, b, c, segments):
+    """Points of the arc from a through b to c (and its center/radius), or None."""
+    r = circle_through(a, b, c)
+    if r is None:
+        return None
+    center, n = r                     # a → b → c runs counter-clockwise about n
+    u = (a - center).normalized()
+    v = n.cross(u)
+    w = c - center
+    sweep = math.atan2(w.dot(v), w.dot(u))
+    if sweep <= 0.0:
+        sweep += 2.0 * math.pi
+    from ..core import geom
+    return geom.arc_points(center, n, a, sweep, segments), center, (a - center).length, n
+
+
+@tool(ToolMeta(id=ARC3_TOOL_ID, label_key="tool.su.arc3.label", icon="ops.mesh.spin", cursor='PAINT_CROSS',
+               vcb_label_key="vcb.segments", vcb_schema="arc", priority='P1'))
+class Arc3Tool(BaseTool):
+    """Arco de três pontos (promoted from P2): start, a point the arc passes through, end. `Ns` = segments
+    (any time before the last click)."""
+
+    def __init__(self):
+        self.segments = constants.ARC_SEGMENTS
+        self.reset()
+
+    def reset(self):
+        self.a = self.b = None
+        self.cur = None
+
+    def update_status(self):
+        key = "hint_start" if self.a is None else ("hint_pivot" if self.b is None else "hint_end")
+        STATE.set_hint("tool.su.arc3." + key)
+        STATE.set_vcb("vcb.segments", str(self.segments))
+
+    def activate(self, tc):
+        self.reset()
+        self.update_status()
+
+    def deactivate(self, tc):
+        self.cancel(tc)
+
+    def cancel(self, tc):
+        self.reset()
+        self.update_status()
+
+    def query_ctx(self, tc, xy):
+        anchor = self.b if self.b is not None else self.a
+        return make_query(tc, xy, anchor=anchor.copy() if anchor is not None else None)
+
+    def move(self, tc, ev, inf):
+        if self.a is None:
+            return Result.IDLE
+        p = _point(inf)
+        if p is not None:
+            self.cur = p
+        self.update_status()
+        return Result.RUNNING
+
+    def press(self, tc, ev, inf):
+        p = _point(inf)
+        if p is None:
+            return Result.RUNNING if self.a is not None else Result.IDLE
+        self.cur = p
+        if self.a is None:
+            self.a = p
+            self.update_status()
+            return Result.RUNNING
+        if self.b is None:
+            if (p - self.a).length > constants.GEOM_TOL:
+                self.b = p
+            self.update_status()
+            return Result.RUNNING
+        if arc3_points(self.a, self.b, p, self.segments) is None:
+            return Result.RUNNING
+        return self._commit(p)
+
+    def release(self, tc, ev, inf):
+        return Result.RUNNING if self.a is not None else Result.IDLE
+
+    def vcb(self, tc, values):
+        if not values or values[0] is None:
+            return Result.PASS
+        v = values[0]
+        if kind_of(v) in {"SEGMENTS", "SIDES", "NUMBER"} or (kind_of(v) == "LENGTH" and self.a is None):
+            n = int(round(value_of(v)))
+            if n >= 1:
+                self.segments = n
+                self.update_status()
+                return Result.RUNNING if self.a is not None else Result.IDLE
+        STATE.vcb_error = True
+        return Result.RUNNING if self.a is not None else Result.IDLE
+
+    def _commit(self, c):
+        from ..core import entities, geom
+        doc = _document()
+        mw = doc.world()
+        inv = mw.inverted()
+        pts, center, radius, n = arc3_points(self.a, self.b, c, self.segments)
+        cid = entities.new_curve_id(doc)
+        geom.add_polyline(doc.bm, [inv @ p for p in pts], False, curve_id=cid)
+        sc = mw.to_scale()
+        k = ((abs(sc.x) + abs(sc.y) + abs(sc.z)) / 3.0) or 1.0
+        cl = inv @ center
+        nl = (mw.to_3x3().inverted().transposed() @ n).normalized()
+        entities.set_curve_meta(doc, cid, {"kind": "arc", "center": [cl.x, cl.y, cl.z], "normal": [nl.x, nl.y, nl.z],
+                                           "radius": radius / k, "segments": self.segments})
+        doc.write(undo_key="tool.su.arc3.undo")
+        self.reset()
+        self.update_status()
+        return Result.IDLE
+
+    def draw_3d(self, dc):
+        prims = registry.optional("draw.prims")
+        if prims is None or self.a is None or self.cur is None:
+            return
+        rgba = colors.rgba(colors.EDGE, 1.0)
+        if self.b is None:
+            prims.line(dc, self.a, self.cur, rgba)
+            return
+        r = arc3_points(self.a, self.b, self.cur, self.segments)
+        if r is None:
+            prims.lines(dc, [(self.a, self.b), (self.b, self.cur)], rgba)
+            return
+        prims.lines(dc, list(zip(r[0], r[0][1:])), rgba)
 
 
 def register():

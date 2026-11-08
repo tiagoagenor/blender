@@ -34,6 +34,16 @@ class TestRotate(FCase):
         self.assertEqual(ctrl.axis, "Y")
         self.assertAlmostEqual(abs(ctrl.normal.y), 1.0)
 
+    def test_protractor_shape(self):
+        from su.tools import rotate
+        segs = rotate.protractor_segments(V((0, 0, 0)), V((0, 0, 1)), V((1, 0, 0)), 1.0)
+        self.assertEqual(len(segs), 2 * 72 + 24 + 1)           # 2 circles, 24 ticks (15°), baseline
+        ticks = segs[144:168]
+        lengths = sorted({round((b - a).length, 3) for a, b in ticks})
+        self.assertEqual(lengths, [0.12, 0.2, 0.28])            # 15° / 45° / 90°
+        self.assertTrue(all(abs(p.z) < 1e-9 for s in segs for p in s))
+        self.assertEqual(rotate.AXIS_RGB[""], (0, 0, 0))
+
     def test_ac_gir_2_exact_90(self):
         selection.select_all()
         before = selection.get()

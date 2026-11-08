@@ -7,7 +7,7 @@ import bpy
 from mathutils import Vector as V
 
 from su import testing
-from su.core import document, selection
+from su.core import document, selection, state
 from su.core.selection import OBJECT, Ref
 
 from test_f_move import bbox, nonplanar
@@ -45,6 +45,7 @@ class TestScale(FCase):
         self.assertEqual(tuple(round(c, 4) for c in mn), (0.0, 0.0, 0.0))
         self.assertEqual(selection.get(), before)
         self.assertEqual(bpy.context.scene.su_undo_serial - s0, 1)
+        self.assertEqual(state.STATE.vcb_value, "2,00")          # uniform: ONE factor (SketchUp)
 
     def test_ac_esc_2_face_length(self):
         selection.select_all()
@@ -53,6 +54,7 @@ class TestScale(FCase):
         mn, mx = bbox(self.doc.bm)
         self.assertAlmostEqual(mx.x, 3.0, places=4)
         self.assertAlmostEqual(mx.y, 6.0, places=4)
+        self.assertEqual(state.STATE.vcb_value.count(";"), 0)  # face grip: 1 value
         self.assertAlmostEqual(mx.z, 3.0, places=4)
 
     def test_ac_esc_3_mirror_keeps_normals_out(self):
@@ -85,6 +87,7 @@ class TestScale(FCase):
         testing.dispatch(testing.ev('LEFTMOUSE', 'RELEASE', 0, 80), None, testing.pt(16, 12, 1.5))
         mn, mx = bbox(self.doc.bm)
         self.assertEqual(tuple(round(c, 4) for c in mx), (16.0, 12.0, 3.0))
+        self.assertEqual(state.STATE.vcb_value, "2,00; 2,00")   # edge grip: 2 axes, 2 values
 
 
 if __name__ == "__main__":

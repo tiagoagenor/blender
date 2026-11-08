@@ -403,7 +403,7 @@ def run(h):
     yield 0.4
     h.glide(*h.world_xy((23, 0, 0)))
     yield 0.4
-    path = os.path.join(h.out_dir, "f_girar_transferidor.png")     # protractor under the cursor, mid-rotation
+    path = os.path.join(h.out_dir, "f_girar_v2.png")     # protractor under the cursor, mid-rotation
     bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=2)
     h.screenshot(path)
     shots.append(path)
@@ -437,6 +437,16 @@ def run(h):
     yield 0.3
     h.click(*grip)
     yield 0.4
+    gx, gy = grip
+    h.glide(gx + 40, gy + 30, steps=4)
+    yield 0.4
+    vtxt = h.state()["vcb_value"]
+    h.check("Escala uniforme (canto): Medidas shows ONE factor", ";" not in vtxt and vtxt != "", vtxt)
+    path = os.path.join(h.out_dir, "f_escala_v2.png")
+    bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=2)
+    h.screenshot(path)
+    shots.append(path)
+    yield 0.3
     h.type_text("2")
     yield 0.8
     bm = doc.bm

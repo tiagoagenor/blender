@@ -33,9 +33,53 @@ STRINGS = {
     "tool.su.rotate.undo_copy": {"pt_BR": "Copiar", "en": "Copy"},
 }
 
-AXIS_RGB = {"X": colors.AXIS_X, "Y": colors.AXIS_Y, "Z": colors.AXIS_Z, "": (60, 60, 60)}
+AXIS_RGB = {"X": colors.AXIS_X, "Y": colors.AXIS_Y, "Z": colors.AXIS_Z, "": colors.EDGE}   # free plane = black
+PROTRACTOR_PX = 56          # logical px radius (constant on screen)
 SNAP_DEG = constants.ANGLE_SNAP_DEG
 SNAP_WITHIN_DEG = 2.0
+
+
+def _default_ref(n):
+    """0° direction of the protractor before the arm exists: red axis (or green) projected on the plane."""
+    n = Vector(n).normalized()
+    for ax in (Vector((1, 0, 0)), Vector((0, 1, 0))):
+        u = ax - n * ax.dot(n)
+        if u.length > 1e-3:
+            return u.normalized()
+    return n.orthogonal().normalized()
+
+
+def protractor_segments(center, normal, ref_dir, radius):
+    """World segments of SketchUp's protractor: outer and inner circles (solid), a tick every 15°
+    (longer every 45°, longest every 90°) and the 0° baseline."""
+    import math as _m
+    c, n = Vector(center), Vector(normal).normalized()
+    u = Vector(ref_dir) - n * Vector(ref_dir).dot(n)
+    u = u.normalized() if u.length > 1e-9 else n.orthogonal().normalized()
+    v = n.cross(u)
+    segs = []
+    k = 72
+    for r in (radius, radius * 0.72):
+        for i in range(k):
+            a0, a1 = 2 * _m.pi * i / k, 2 * _m.pi * (i + 1) / k
+            segs.append((c + (u * _m.cos(a0) + v * _m.sin(a0)) * r, c + (u * _m.cos(a1) + v * _m.sin(a1)) * r))
+    for d in range(0, 360, 15):
+        a = _m.radians(d)
+        e = u * _m.cos(a) + v * _m.sin(a)
+        inner = 0.72 if d % 90 == 0 else (0.80 if d % 45 == 0 else 0.88)
+        segs.append((c + e * radius * inner, c + e * radius))
+    segs.append((c, c + u * radius))
+    return segs
+
+
+def draw_protractor(dc, prims, center, normal, ref_dir, rgba):
+    from ..core import viewutil
+    k = viewutil.pixel_size_at(dc.region, dc.rv3d, Vector(center))
+    if k <= 0:
+        return
+    radius = viewutil.ui_px(PROTRACTOR_PX) * k
+    prims.lines(dc, protractor_segments(center, normal, ref_dir, radius), rgba, 2.0, depth=False)
+    prims.points(dc, [Vector(center)], rgba, 5)
 
 
 def fmt_angle(rad):
@@ -290,8 +334,8 @@ class RotateTool(BaseTool):
         if center is None:
             return
         rgba = colors.rgba(AXIS_RGB.get(self.axis, AXIS_RGB[""]))
-        ref_dir = (self.ref - self.center) if self.ref is not None else self.normal.orthogonal()
-        prims.protractor(dc, center, self.normal, ref_dir, rgba)
+        ref_dir = (self.ref - self.center) if self.ref is not None else _default_ref(self.normal)
+        draw_protractor(dc, prims, center, self.normal, ref_dir, rgba)
         black = colors.rgba(colors.EDGE)
         if self.stage == 2 and self.ref is not None:
             prims.line(dc, self.center, self.ref, black, 1.0, depth=False)

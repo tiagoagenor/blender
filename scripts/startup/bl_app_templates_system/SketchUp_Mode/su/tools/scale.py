@@ -135,8 +135,7 @@ class ScaleTool(BaseTool):
         opt = modifiers.label("copy")
         STATE.set_hint("tool.su.scale.hint_drag" if self.session else "tool.su.scale.hint_pick", opt=opt)
         if self.session is not None:
-            axes = self._axes(self.grip)
-            STATE.set_vcb(self.meta.vcb_label_key, "; ".join(_fmt(self.factors[a]) for a in axes))
+            STATE.set_vcb(self.meta.vcb_label_key, self.vcb_text(self.grip, self.factors, self.uniform_toggle))
         else:
             STATE.set_vcb(self.meta.vcb_label_key, STATE.vcb_value)
 
@@ -194,6 +193,16 @@ class ScaleTool(BaseTool):
 
     def _axes(self, code):
         return [a for a in range(3) if code is not None and code[a] != 1]
+
+    def vcb_text(self, code, factors, uniform_toggle):
+        """Medidas text as SketchUp shows it: ONE factor for a uniform scale (corner grip, or Shift),
+        otherwise one value per scaled axis (1 for a face grip, 2 for an edge grip, 3 for Shift+corner)."""
+        axes = self._axes(code)
+        corner = len(axes) == 3
+        uniform = (corner != uniform_toggle) if corner else uniform_toggle
+        if uniform or not axes:
+            return _fmt(factors[axes[0]] if axes else factors[0])
+        return "; ".join(_fmt(factors[a]) for a in axes)
 
     def _uniform(self, code):
         corner = len(self._axes(code)) == 3
@@ -344,7 +353,8 @@ class ScaleTool(BaseTool):
         self.grip = None
         self._refresh_box()
         self.update_status()
-        STATE.set_vcb(self.meta.vcb_label_key, "; ".join(_fmt(x) for x in self.last_info[4]))
+        grip, _c, uni, _b, f = self.last_info
+        STATE.set_vcb(self.meta.vcb_label_key, self.vcb_text(grip, f, uni))
         return Result.IDLE
 
     def _apply_final(self, s, m):
@@ -376,7 +386,7 @@ class ScaleTool(BaseTool):
                     geom.reverse_faces(p.doc.bm, [x for x in p.doc.bm.faces if all(v in vs for v in x.verts)])
                     p.doc.write(undo_key=None)
             self.last_info = (grip, center, uni, box, f)
-            STATE.set_vcb(self.meta.vcb_label_key, "; ".join(_fmt(x) for x in f))
+            STATE.set_vcb(self.meta.vcb_label_key, self.vcb_text(grip, f, uni))
             return True
         finally:
             self.grip, self.about_center, self.uniform_toggle, self.box = saved

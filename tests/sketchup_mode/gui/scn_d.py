@@ -324,6 +324,45 @@ def run(h):
     h.check("selected edge blue", eb is not None and eb[2] >= 180 and eb[0] <= 70, eb)
     sel.clear()
 
+    # ---- 4b. hidden faces (F's Ocultar → su_hidden_face): collapsed by the GN, edges stay
+    bme = sc["box"].data
+    tops = [p.index for p in bme.polygons if p.normal.z > 0.9]       # the top is 2 triangles (bridge)
+    top_i = tops[0]
+    a = bme.attributes.get("su_hidden_face") or bme.attributes.new("su_hidden_face", 'BOOLEAN', 'FACE')
+    for i in tops:
+        a.data[i].value = True
+    bme.update()
+    mod("draw.edges").mark_dirty("Caixa")
+    area.tag_redraw()
+    yield 1.0
+    path4 = os.path.join(h.out_dir, "scn_d_hidden.png")
+    h.screenshot(path4)
+    yield 0.5
+    shot4 = Shot(path4)
+    tc = shot4.at(*wxy(tuple(bme.polygons[top_i].center)))
+    probes["hidden top face (see the inside)"] = tc
+    h.check("hidden face gone (inside back faces seen, not the grey top)", tc is not None and tc[2] - tc[0] >= 15, tc)
+    te = shot4.darkest(*wxy((1.0, 0.0, 1.5)))
+    h.check("edges of the hidden face stay black", te is not None and max(te) <= 60, te)
+    st = bpy.context.scene.su_style
+    st.show_hidden_geometry = True
+    yield 1.0
+    path5 = os.path.join(h.out_dir, "scn_d_hidden_shown.png")
+    h.screenshot(path5)
+    yield 0.5
+    shot5 = Shot(path5)
+    c5 = wxy(tuple(bme.polygons[top_i].center))
+    dots = sum(1 for dy in range(-10, 11) for dx in range(-10, 11)
+               if (q := shot5.at(c5[0] + dx, c5[1] + dy)) is not None and max(q) < 140)
+    probes["hidden face shown: dark dots"] = dots
+    h.check("Geometria oculta: hidden face drawn with dots", dots >= 5, dots)
+    st.show_hidden_geometry = False
+    for i in tops:
+        a.data[i].value = False
+    bme.update()
+    mod("draw.edges").mark_dirty("Caixa")
+    yield 0.5
+
     # ---- 5. P1 styles (§9.2-D item 10): back edges, tray Estilos › Editar open
     st = bpy.context.scene.su_style
     st.show_back_edges = True

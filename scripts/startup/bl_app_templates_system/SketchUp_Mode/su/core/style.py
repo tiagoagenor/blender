@@ -148,6 +148,8 @@ def apply(context=None):
     gn = _sib("draw.display_gn")
     if gn is not None:
         gn.set_back_copy(not see_through)
+        if st is not None:
+            gn.set_show_hidden(st.show_hidden_geometry)
     events.emit("style")
 
 

@@ -25,6 +25,7 @@ over the GN copy (which still provides depth, culling and the Raio X switch).
 import sys
 
 import bpy
+from mathutils import Vector
 
 from .. import colors, constants, events
 from . import handlers
@@ -39,7 +40,9 @@ GROUP = "SU_Display"
 ATTR_BACK = "su_back_mat"
 MAT_FRONT = "Padrão"
 MAT_BACK = "Padrão (verso)"
-_state = {"back_copy": True}
+ATTR_HIDDEN_FACE = "su_hidden_face"          # face BOOL, Ocultar (F)
+HIDDEN_LOOK = (120, 120, 130)               # dotted look of hidden faces when Geometria oculta is on
+_state = {"back_copy": True, "show_hidden": False}
 
 
 def _new_node(nodes, type_, x, y, **props):
@@ -50,27 +53,52 @@ def _new_node(nodes, type_, x, y, **props):
     return n
 
 
+GROUP_VERSION = 2
+SOCKET_SHOW_HIDDEN = "Mostrar ocultas"
+
+
 def node_group():
-    """The shared "SU_Display" node group (created once per file)."""
+    """The shared "SU_Display" node group (created once per file; older versions are replaced).
+
+    v2: hidden faces (face BOOL `su_hidden_face`, F) collapse on the ORIGINAL branch before the
+    Join/Flip — Split Edges (selection) → Scale Elements (faces, scale 0) — so they vanish while the
+    face COUNT and ORDER stay (C relies on idx % n_orig). Group input "Mostrar ocultas" (Visualizar ›
+    Geometria oculta) disables the collapse."""
     ng = bpy.data.node_groups.get(GROUP)
-    if ng is not None and ng.bl_idname == 'GeometryNodeTree' and ng.get("su_version") == 1:
+    if ng is not None and ng.bl_idname == 'GeometryNodeTree' and ng.get("su_version") == GROUP_VERSION:
         return ng
     if ng is not None:
         ng.name = GROUP + ".old"
     ng = bpy.data.node_groups.new(GROUP, 'GeometryNodeTree')
-    ng["su_version"] = 1
+    ng["su_version"] = GROUP_VERSION
     ng.interface.new_socket("Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
+    ng.interface.new_socket(SOCKET_SHOW_HIDDEN, in_out='INPUT', socket_type='NodeSocketBool')
     ng.interface.new_socket("Geometry", in_out='OUTPUT', socket_type='NodeSocketGeometry')
     N, L = ng.nodes, ng.links
-    gi = _new_node(N, 'NodeGroupInput', -800, 0)
+    gi = _new_node(N, 'NodeGroupInput', -1400, 0)
     go = _new_node(N, 'NodeGroupOutput', 400, 0)
+    # hidden faces collapse (selection = hidden AND NOT show-hidden)
+    hid = _new_node(N, 'GeometryNodeInputNamedAttribute', -1400, -250, data_type='BOOLEAN')
+    hid.inputs["Name"].default_value = ATTR_HIDDEN_FACE
+    sel = _new_node(N, 'FunctionNodeBooleanMath', -1150, -250, operation='NIMPLY')
+    split = _new_node(N, 'GeometryNodeSplitEdges', -950, 0)
+    scale = _new_node(N, 'GeometryNodeScaleElements', -750, 0, domain='FACE')
+    scale.inputs["Scale"].default_value = 0.0
+    L.new(hid.outputs["Attribute"], sel.inputs[0])
+    L.new(gi.outputs[1], sel.inputs[1])
+    L.new(gi.outputs[0], split.inputs["Mesh"])
+    L.new(sel.outputs[0], split.inputs["Selection"])
+    L.new(split.outputs["Mesh"], scale.inputs["Geometry"])
+    L.new(sel.outputs[0], scale.inputs["Selection"])
+    base = scale.outputs["Geometry"]
+    # back copy
     flip = _new_node(N, 'GeometryNodeFlipFaces', -500, -150)
     attr = _new_node(N, 'GeometryNodeInputNamedAttribute', -800, -350, data_type='INT')
     attr.inputs["Name"].default_value = ATTR_BACK
     sw = _new_node(N, 'GeometryNodeSwitch', -500, -350, input_type='INT')
     setm = _new_node(N, 'GeometryNodeSetMaterialIndex', -200, -150)
     join = _new_node(N, 'GeometryNodeJoinGeometry', 150, 0)
-    L.new(gi.outputs[0], flip.inputs["Mesh"])
+    L.new(base, flip.inputs["Mesh"])
     L.new(attr.outputs["Exists"], sw.inputs["Switch"])
     sw.inputs["False"].default_value = constants.SLOT_DEFAULT_BACK
     L.new(attr.outputs["Attribute"], sw.inputs["True"])
@@ -78,9 +106,47 @@ def node_group():
     L.new(sw.outputs["Output"], setm.inputs["Material Index"])
     # Join keeps the order of its inputs: original first (face index i < n = original face i)
     L.new(setm.outputs["Geometry"], join.inputs["Geometry"])
-    L.new(gi.outputs[0], join.inputs["Geometry"])
+    L.new(base, join.inputs["Geometry"])
     L.new(join.outputs["Geometry"], go.inputs[0])
     return ng
+
+
+def _show_hidden_identifier(ng):
+    item = ng.interface.items_tree.get(SOCKET_SHOW_HIDDEN)
+    return item.identifier if item is not None else None
+
+
+def set_show_hidden(on):
+    """Visualizar › Geometria oculta: hidden faces drawn (with a dotted look) instead of collapsed."""
+    on = bool(on)
+    changed = _state["show_hidden"] != on
+    _state["show_hidden"] = on
+    for obj in bpy.data.objects:
+        mod = obj.modifiers.get(MODIFIER)
+        if mod is not None and mod.type == 'NODES' and mod.node_group is not None:
+            _apply_show_hidden(obj, mod)
+    if changed:
+        _back_cache.clear()
+
+
+def _apply_show_hidden(obj, mod):
+    ident = _show_hidden_identifier(mod.node_group)
+    if ident is None:
+        return
+    want = _state["show_hidden"]
+    props = getattr(mod, "properties", None)          # 5.x: modifier.properties.inputs.<Socket_N>.value
+    sock = getattr(getattr(props, "inputs", None), ident, None) if props is not None else None
+    try:
+        if sock is not None:
+            if bool(sock.value) != want:
+                sock.value = want
+                obj.update_tag()
+        elif mod.get(ident) != want:                  # older API: IDProperties on the modifier
+            mod[ident] = want
+            obj.update_tag()
+    except Exception:
+        from .. import perf
+        perf.exception("display_gn: set {:s} on {:s}".format(SOCKET_SHOW_HIDDEN, obj.name))
 
 
 def _materials_module():
@@ -135,6 +201,7 @@ def ensure(obj):
         mod = obj.modifiers.new(MODIFIER, 'NODES')
     if mod.node_group is None or mod.node_group.name != GROUP:
         mod.node_group = node_group()
+    _apply_show_hidden(obj, mod)
     if mod.show_viewport != _state["back_copy"]:
         mod.show_viewport = _state["back_copy"]
     mod.show_render = True
@@ -188,8 +255,37 @@ def _material_colors(me):
     return out
 
 
-def back_triangles(me):
-    """(positions (3n,3) local, reversed winding; colours (3n,4) sRGB) of the mesh's back sides."""
+def hidden_faces(me):
+    """Face BOOL array of `su_hidden_face` (all False when missing)."""
+    import numpy as np
+    out = np.zeros(len(me.polygons), dtype=bool)
+    a = me.attributes.get(ATTR_HIDDEN_FACE)
+    if a is not None and a.domain == 'FACE' and a.data_type == 'BOOLEAN' and len(me.polygons):
+        a.data.foreach_get("value", out)
+    return out
+
+
+def hidden_triangles(me):
+    """Positions (3n,3) local of the triangles of hidden faces, or None."""
+    import numpy as np
+    hid = hidden_faces(me)
+    if not hid.any():
+        return None
+    me.calc_loop_triangles()
+    n = len(me.loop_triangles)
+    tv = np.empty(n * 3, np.int32)
+    me.loop_triangles.foreach_get("vertices", tv)
+    tp = np.empty(n, np.int32)
+    me.loop_triangles.foreach_get("polygon_index", tp)
+    co = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertices.foreach_get("co", co)
+    keep = hid[tp]
+    return co.reshape(-1, 3)[tv.reshape(-1, 3)[keep].reshape(-1)] if keep.any() else None
+
+
+def back_triangles(me, skip_hidden=True):
+    """(positions (3n,3) local, reversed winding; colours (3n,4) sRGB) of the mesh's back sides.
+    Hidden faces (`su_hidden_face`) are left out unless `skip_hidden` is False."""
     import numpy as np
     me.calc_loop_triangles()
     n = len(me.loop_triangles)
@@ -203,6 +299,12 @@ def back_triangles(me):
     me.vertices.foreach_get("co", co)
     co = co.reshape(-1, 3)
     tv = tv.reshape(-1, 3)[:, (0, 2, 1)]                     # reversed winding = the back side
+    if skip_hidden:
+        keep = ~hidden_faces(me)[tp]
+        if not keep.all():
+            tv, tp = tv[keep], tp[keep]
+            if not len(tp):
+                return None, None
     pos = co[tv.reshape(-1)]
     slot = np.full(len(me.polygons), constants.SLOT_DEFAULT_BACK, np.int32)
     a = me.attributes.get(ATTR_BACK)
@@ -235,26 +337,39 @@ def draw_back_faces(dc):
         me = orig.data
         if me is None or not len(me.polygons):
             continue
-        key = (len(me.vertices), len(me.polygons), edges._serial.get(me.name, 0),
+        key = (len(me.vertices), len(me.polygons), edges._serial.get(me.name, 0), _state["show_hidden"],
                tuple(tuple(round(x, 4) for x in c) for c in _material_colors(me)))
         ent = _back_cache.get(me.as_pointer())
         if ent is None or ent[0] != key:
-            pos, col = back_triangles(me)
-            ent = (key, batch_for_shader(sh, 'TRIS', {"pos": pos, "color": col}) if pos is not None else None)
+            pos, col = back_triangles(me, skip_hidden=not _state["show_hidden"])
+            hpos = hidden_triangles(me) if _state["show_hidden"] else None
+            ent = (key, batch_for_shader(sh, 'TRIS', {"pos": pos, "color": col}) if pos is not None else None,
+                   hpos)
             _back_cache[me.as_pointer()] = ent
-        if ent[1] is not None:
-            items.append((inst.matrix_world.copy(), ent[1]))
+        if ent[1] is not None or ent[2] is not None:
+            items.append((inst.matrix_world.copy(), ent))
     if not items:
         return
     gpu.state.depth_test_set('LESS_EQUAL')
     gpu.state.depth_mask_set(False)
     gpu.state.face_culling_set('BACK')
     with shaders.offset_projection(dc.rv3d, 0.3):
-        for M, b in items:
-            with gpu.matrix.push_pop():
-                gpu.matrix.multiply_matrix(M)
-                b.draw(sh)
+        for M, ent in items:
+            if ent[1] is not None:
+                with gpu.matrix.push_pop():
+                    gpu.matrix.multiply_matrix(M)
+                    ent[1].draw(sh)
     gpu.state.face_culling_set('NONE')
+    if _state["show_hidden"]:
+        # Geometria oculta: hidden faces drawn (GN collapse off) with a dotted look, both sides
+        from . import prims
+        for M, ent in items:
+            hpos = ent[2]
+            if hpos is None:
+                continue
+            for i in range(0, len(hpos), 3):
+                prims.polygon(dc, [M @ Vector(hpos[i + k]) for k in range(3)], colors.rgba(HIDDEN_LOOK),
+                              stipple=True)
     gpu.state.depth_test_set('NONE')
 
 

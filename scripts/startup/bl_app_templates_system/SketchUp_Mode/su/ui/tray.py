@@ -14,7 +14,7 @@ CLOSED (2027 behaviour); the open set lives in `wm.su_tray.open_ids` (not saved:
 """
 
 import bpy
-from bpy.props import StringProperty
+from bpy.props import EnumProperty, StringProperty
 
 from .. import i18n, registry
 from .. import icons
@@ -107,6 +107,8 @@ class SU_PG_tray(bpy.types.PropertyGroup):
     open_ids: StringProperty(name="Seções abertas", default="")
     # Measurements field shown by the status bar until A's wm.su_vcb exists.
     vcb_fallback: StringProperty(name="Medidas", default="")
+    styles_tab: EnumProperty(name="Aba", items=(('SELECT', "Selecionar", ""), ('EDIT', "Editar", ""),
+                                                ('MIX', "Misturar", "")), default='SELECT')
 
 
 class SU_OT_tray_toggle(bpy.types.Operator):

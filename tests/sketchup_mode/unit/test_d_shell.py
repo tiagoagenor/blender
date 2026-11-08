@@ -192,6 +192,37 @@ class TestDisplayGN(unittest.TestCase):
             bpy.data.meshes.remove(me)
 
 
+class TestIcons(unittest.TestCase):
+    def test_every_tool_icon_is_an_original_drawing_with_dim(self):
+        for tid, h in icons.TOOL_ICONS.items():
+            self.assertTrue(h.startswith("draw."), tid)
+            self.assertTrue(os.path.isfile(icons.dat_path(h) + ".dat"), h)
+            self.assertTrue(os.path.isfile(icons.dat_path(h + icons.DIM_SUFFIX) + ".dat"), h)
+        for name, h in icons.UI_ICONS.items():
+            self.assertTrue(os.path.isfile(icons.dat_path(h) + ".dat") or h.startswith("bi."), h)
+
+
+class TestExport(unittest.TestCase):
+    def test_obj_export_without_back_copy(self):
+        gn = importlib.import_module("su.draw.display_gn")
+        file_ops = importlib.import_module("su.ops.file_ops")
+        ob, *_ = _box_with_lines()
+        path = os.path.join(bpy.app.tempdir, "test_d_export.obj")
+        try:
+            gn.ensure(ob)
+            n = sum(len(o.data.polygons) for o in bpy.context.scene.objects if o is not None and o.type == 'MESH')
+            self.assertTrue(file_ops.export('OBJ', path))
+            with open(path, encoding="utf-8") as f:
+                faces = sum(1 for l in f if l.startswith("f "))
+            self.assertEqual(faces, n, "export must skip the GN back copy (no duplicated faces)")
+        finally:
+            me = ob.data
+            bpy.data.objects.remove(ob)
+            bpy.data.meshes.remove(me)
+            if os.path.exists(path):
+                os.remove(path)
+
+
 class TestStyle(unittest.TestCase):
     def test_scene_style_and_view_transform(self):
         sc = bpy.context.scene
@@ -202,6 +233,12 @@ class TestStyle(unittest.TestCase):
         style.toggle("show_axes")
         self.assertNotEqual(before, sc.su_style.show_axes)
         style.toggle("show_axes")
+
+    def test_face_styles(self):
+        st = bpy.context.scene.su_style
+        for fs in ('XRAY', 'WIREFRAME', 'HIDDEN_LINE', 'SHADED', 'MONOCHROME', 'TEXTURED'):
+            st.face_style = fs
+        self.assertEqual(st.face_style, 'TEXTURED')
 
 
 if __name__ == "__main__":

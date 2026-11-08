@@ -277,6 +277,28 @@ def run(h):
     probes["selected edge"] = eb
     h.check("selected edge blue", eb is not None and eb[2] >= 180 and eb[0] <= 70, eb)
     sel.clear()
+
+    # ---- 5. P1 styles (§9.2-D item 10): back edges, tray Estilos › Editar open
+    st = bpy.context.scene.su_style
+    st.show_back_edges = True
+    tray.set_open("styles", True)
+    bpy.context.window_manager.su_tray.styles_tab = 'EDIT'
+    area.tag_redraw()
+    yield 1.0
+    path3 = os.path.join(h.out_dir, "scn_d_styles.png")
+    h.screenshot(path3)
+    yield 0.5
+    shot3 = Shot(path3)
+    hidden = wxy((0.0, 3.0, 0.75))           # back-left vertical edge, behind the box
+    hd = shot3.darkest(*hidden, r=4) if hidden else None
+    probes["back edge (hidden, dashed)"] = hd
+    h.check("back edges drawn behind faces", hd is not None and max(hd) <= 110, hd)
+    st.face_style = 'XRAY'
+    yield 0.6
+    h.check("Raio X: GN back copy off", not sc["box"].modifiers["SU_Display"].show_viewport)
+    st.face_style = 'TEXTURED'
+    st.show_back_edges = False
+    h.check("back copy on again", sc["box"].modifiers["SU_Display"].show_viewport)
     with open(os.path.join(h.out_dir, "probes.json"), "w", encoding="utf-8") as f:
         json.dump(probes, f, indent=1, ensure_ascii=False, default=str)
     h.check("screenshot written", os.path.isfile(path))

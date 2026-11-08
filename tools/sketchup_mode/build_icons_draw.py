@@ -336,11 +336,254 @@ def icon_select(d):
     poly(d, [(28, 10), (28, 78), (44, 63), (56, 90), (68, 84), (56, 58), (78, 58)], NAVY, NAVY, 4)
 
 
+
+# ---- second set: drawing / construction / camera tools (inference-point style: red dot = the point
+# you click next, navy dot = a fixed point, cyan = the geometry being drawn)
+def dot(d, x, y, col=RED, r=6.5):
+    circle(d, x, y, r, col, None, 0)
+
+
+def dashed(d, pts, col=CYAN, w=4.5, dash=7, gap=5):
+    """Dashed polyline (screen-constant pattern on the 100 grid)."""
+    acc, on = 0.0, True
+    for a, b in zip(pts, pts[1:]):
+        L = math.hypot(b[0] - a[0], b[1] - a[1])
+        t = 0.0
+        while t < L:
+            step = min((dash if on else gap) - acc, L - t)
+            if on:
+                p0 = (a[0] + (b[0] - a[0]) * t / L, a[1] + (b[1] - a[1]) * t / L)
+                p1 = (a[0] + (b[0] - a[0]) * (t + step) / L, a[1] + (b[1] - a[1]) * (t + step) / L)
+                line(d, [p0, p1], col, w, caps=False)
+            t += step
+            acc += step
+            if acc >= (dash if on else gap) - 1e-6:
+                acc, on = 0.0, not on
+
+
+def icon_lasso(d):
+    dashed(d, arc_pts(46, 40, 36, 24, 0, 360), CYAN, 4.5)
+    icon_cursor_small(d, 52, 44)
+
+
+def icon_cursor_small(d, x, y, k=0.55):
+    pts = [(28, 10), (28, 78), (44, 63), (56, 90), (68, 84), (56, 58), (78, 58)]
+    poly(d, [(x + (px - 28) * k, y + (py - 10) * k) for px, py in pts], NAVY, NAVY, 3)
+
+
+def icon_make_component(d):
+    iso_box(d, 10, 56, 30, 30, 16, top=CYAN_L, front=WHITE, side=CYAN_L, sw=4.5)
+    iso_box(d, 46, 56, 30, 30, 16, top=CYAN_L, front=WHITE, side=CYAN_L, sw=4.5)
+    iso_box(d, 28, 24, 30, 30, 16, top=CYAN, front=WHITE, side=CYAN_L, sw=4.5)
+
+
+def icon_freehand(d):
+    pts = [(10 + i * 2.0, 70 - 22 * math.sin(i / 5.0) * (1 - i / 60.0) - i * 0.5) for i in range(0, 38)]
+    line(d, pts, CYAN, 6)
+    dot(d, *pts[-1])
+
+
+def icon_rectangle(d):
+    poly(d, [(14, 26), (86, 26), (86, 86), (14, 86)], None, CYAN, 6)
+    line(d, [(14, 86), (86, 26)], NAVY, 3)
+    dot(d, 14, 86, NAVY)
+    dot(d, 86, 26)
+
+
+def icon_rotated_rectangle(d):
+    q = rot([(18, 30), (82, 30), (82, 78), (18, 78)], -22, 50, 54)
+    poly(d, q, None, CYAN, 6)
+    dot(d, *q[3], NAVY)
+    dot(d, *q[0], NAVY)
+    dot(d, *q[1])
+
+
+def icon_circle(d):
+    circle(d, 48, 54, 34, None, CYAN, 6)
+    line(d, [(48, 54), (48 + 34 * math.cos(math.radians(-45)), 54 + 34 * math.sin(math.radians(-45)))], NAVY, 3)
+    dot(d, 48, 54, NAVY)
+    dot(d, 48 + 34 * math.cos(math.radians(-45)), 54 + 34 * math.sin(math.radians(-45)))
+
+
+def icon_polygon(d):
+    hexa = [(50 + 36 * math.cos(math.radians(a)), 54 + 36 * math.sin(math.radians(a))) for a in range(0, 360, 60)]
+    poly(d, hexa, None, CYAN, 6)
+    dot(d, 50, 54, NAVY)
+    dot(d, *hexa[5])
+
+
+def icon_arc(d):
+    c = (22, 80)
+    line(d, arc_pts(c[0], c[1], 58, 58, -90, 0), CYAN, 6)
+    line(d, [c, (c[0], c[1] - 58)], NAVY, 3)
+    line(d, [c, (c[0] + 58, c[1])], NAVY, 3)
+    dot(d, *c, NAVY)
+    dot(d, c[0], c[1] - 58, NAVY)
+    dot(d, c[0] + 58, c[1])
+
+
+def icon_arc2(d):
+    pts = arc_pts(50, 92, 46, 46, 215, 325)
+    line(d, pts, CYAN, 6)
+    dot(d, *pts[0], NAVY)
+    dot(d, *pts[-1], NAVY)
+    dot(d, 50, 46)
+
+
+def icon_arc3(d):
+    pts = arc_pts(50, 70, 40, 40, 160, 380)
+    line(d, pts, CYAN, 6)
+    dot(d, *pts[0], NAVY)
+    dot(d, *pts[len(pts) // 2], NAVY)
+    dot(d, *pts[-1])
+
+
+def icon_pie(d):
+    c = (30, 72)
+    pts = [c] + arc_pts(c[0], c[1], 56, 56, -75, 0)
+    poly(d, pts, CYAN_L, CYAN, 5)
+    dot(d, *c, NAVY)
+    dot(d, *pts[1], NAVY)
+    dot(d, *pts[-1])
+
+
+def icon_followme(d):
+    outer = arc_pts(14, 86, 72, 72, -90, 0)
+    inner = arc_pts(14, 86, 50, 50, 0, -90)
+    poly(d, outer + inner, CYAN_L, NAVY, 4.5)
+    poly(d, [(64, 86), (86, 86), (86, 70), (64, 70)], CYAN, NAVY, 4)
+    dot(d, 14, 25)
+
+
+def icon_offset(d):
+    line(d, arc_pts(54, 60, 40, 40, 180, 360), CYAN, 6)
+    line(d, arc_pts(54, 60, 22, 22, 180, 360), NAVY, 4)
+    line(d, [(14, 60), (14, 88)], CYAN, 6)
+    line(d, [(94, 60), (94, 88)], CYAN, 6)
+    dot(d, 54, 20)
+
+
+def icon_flip(d):
+    dashed(d, [(50, 6), (50, 94)], NAVY, 3.5, 6, 4)
+    poly(d, [(42, 22), (42, 82), (12, 82)], WHITE, NAVY, 4.5)
+    poly(d, [(58, 22), (58, 82), (88, 82)], CYAN_L, CYAN, 4.5)
+
+
+def icon_dimension(d):
+    a, b = (16, 70), (80, 22)
+    line(d, [(10, 62), (22, 78)], NAVY, 3)
+    line(d, [(74, 14), (86, 30)], NAVY, 3)
+    arrow(d, ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2), b, NAVY, 3.5, 12)
+    arrow(d, ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2), a, NAVY, 3.5, 12)
+    dot(d, 30, 88, NAVY)
+    dot(d, 92, 46)
+    line(d, [(26, 82), (34, 94)], NAVY, 2.5, caps=False)
+
+
+def _letter_a(d, x, y, h, col=NAVY, w=6):
+    line(d, [(x, y + h), (x + h * 0.38, y), (x + h * 0.76, y + h)], col, w)
+    line(d, [(x + h * 0.17, y + h * 0.62), (x + h * 0.59, y + h * 0.62)], col, w * 0.8, caps=False)
+
+
+def icon_text(d):
+    poly(d, [(40, 10), (92, 10), (92, 50), (40, 50)], WHITE, NAVY, 4.5)
+    _letter_a(d, 54, 18, 26, NAVY, 5)
+    line(d, [(40, 50), (16, 86)], NAVY, 3.5)
+    dot(d, 16, 86)
+
+
+def icon_text3d(d):
+    for off, col in ((7, CYAN), (0, NAVY)):
+        _letter_a(d, 18 + off, 12 - off * 0.6 + 6, 70, col, 11)
+
+
+def icon_section(d):
+    q = [(20, 30), (72, 14), (80, 72), (28, 88)]
+    poly(d, q, CYAN_L, NAVY, 4.5)
+    arrow(d, (50, 52), (88, 40), RED, 6, 14)
+    arrow(d, (50, 52), (12, 64), RED, 6, 14)
+
+
+def icon_axes(d):
+    o = (34, 70)
+    arrow(d, o, (92, 70), (220, 30, 30, 255), 6, 14)
+    arrow(d, o, (64, 36), (30, 160, 40, 255), 6, 14)
+    arrow(d, o, (34, 6), (30, 60, 210, 255), 6, 14)
+    dot(d, *o, NAVY)
+
+
+def icon_zoom_window(d):
+    dashed(d, [(8, 8), (92, 8), (92, 92), (8, 92), (8, 8)], NAVY, 3.5, 6, 4)
+    line(d, [(54, 54), (76, 76)], NAVY, 10)
+    circle(d, 40, 40, 20, CYAN_L, NAVY, 6)
+
+
+def icon_zoom_extents(d):
+    line(d, [(54, 54), (70, 70)], NAVY, 9)
+    circle(d, 44, 44, 17, CYAN_L, NAVY, 5.5)
+    for tip in ((8, 8), (92, 8), (8, 92), (92, 92)):
+        arrow(d, (50 + (tip[0] - 50) * 0.45, 50 + (tip[1] - 50) * 0.45), tip, RED, 5, 13)
+
+
+def icon_previous(d):
+    poly(d, [(30, 26), (86, 26), (86, 82), (30, 82)], WHITE, NAVY, 4.5)
+    line(d, [(42, 40), (72, 40)], CYAN, 4)
+    line(d, [(42, 54), (72, 54)], CYAN, 4)
+    arc_arrow(d, 30, 62, 20, 20, 0, 160, RED, 6, 14)
+
+
+def icon_position_camera(d):
+    line(d, [(50, 52), (24, 94)], NAVY, 4)
+    line(d, [(50, 52), (76, 94)], NAVY, 4)
+    line(d, [(50, 52), (50, 94)], NAVY, 4)
+    poly(d, [(22, 14), (78, 14), (78, 52), (22, 52)], WHITE, NAVY, 5)
+    circle(d, 50, 33, 11, RED, NAVY, 3.5)
+
+
+def icon_walk(d):
+    circle(d, 52, 14, 8, NAVY, None, 0)
+    line(d, [(50, 26), (44, 58)], NAVY, 9)
+    line(d, [(44, 58), (30, 92)], NAVY, 7)
+    line(d, [(44, 58), (62, 74), (60, 92)], NAVY, 7)
+    line(d, [(48, 32), (32, 50)], NAVY, 6)
+    line(d, [(50, 32), (66, 46)], NAVY, 6)
+    poly(d, [(56, 26), (72, 26), (70, 52), (54, 50)], RED, None, 0)
+
+
+def icon_look_around(d):
+    pts_top = arc_pts(50, 76, 46, 46, 205, 335)
+    pts_bot = arc_pts(50, 24, 46, 46, 25, 155)
+    poly(d, pts_top + pts_bot, WHITE, NAVY, 5)
+    circle(d, 50, 50, 15, CYAN, NAVY, 3.5)
+    circle(d, 50, 50, 6, NAVY, None, 0)
+
+
+def icon_fov(d):
+    o = (14, 50)
+    line(d, [o, (86, 14)], NAVY, 5)
+    line(d, [o, (86, 86)], NAVY, 5)
+    dashed(d, arc_pts(o[0], o[1], 62, 62, -27, 27), CYAN, 5, 6, 4)
+    dot(d, *o, NAVY)
+
+
+def icon_search(d):
+    line(d, [(58, 58), (84, 84)], NAVY, 9)
+    circle(d, 40, 40, 24, None, NAVY, 6)
+
+
 TOOLS = {
     "line": icon_line, "eraser": icon_eraser, "paint": icon_paint, "tape": icon_tape,
     "pushpull": icon_pushpull, "move": icon_move, "rotate": icon_rotate, "scale": icon_scale,
     "protractor": icon_protractor, "zoom": icon_zoom, "pan": icon_pan, "orbit": icon_orbit,
     "select": icon_select,
+    "lasso": icon_lasso, "make_component": icon_make_component, "freehand": icon_freehand,
+    "rectangle": icon_rectangle, "rotated_rectangle": icon_rotated_rectangle, "circle": icon_circle,
+    "polygon": icon_polygon, "arc": icon_arc, "arc2": icon_arc2, "arc3": icon_arc3, "pie": icon_pie,
+    "followme": icon_followme, "offset": icon_offset, "flip": icon_flip, "dimension": icon_dimension,
+    "text": icon_text, "text3d": icon_text3d, "section": icon_section, "axes": icon_axes,
+    "zoom_window": icon_zoom_window, "zoom_extents": icon_zoom_extents, "previous": icon_previous,
+    "position_camera": icon_position_camera, "walk": icon_walk, "look_around": icon_look_around,
+    "fov": icon_fov, "search": icon_search,
 }
 
 

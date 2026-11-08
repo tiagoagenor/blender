@@ -109,6 +109,14 @@ def apply_theme(context=None):
     w.inner_sel = (1.0, 1.0, 1.0, 1.0)
     w.outline = rgba((190, 190, 198))
     w.roundness = 0.15
+    # Radio/enum rows (tray tabs Selecionar/Editar/Misturar, Estilo de face): light, selected = light blue
+    w = ui.wcol_radio
+    w.inner = (1.0, 1.0, 1.0, 1.0)
+    w.inner_sel = rgba(sel_fill)
+    w.outline = rgba(border)
+    w.text = rgb(text)
+    w.text_sel = rgb(text)
+    w.roundness = 0.2
     # Tray rows: flat bands #E0E1E9, no rounding
     w = ui.wcol_box
     w.inner = rgba(hdr)
@@ -162,8 +170,9 @@ def apply_theme(context=None):
 
 def theme_is_applied(context=None):
     context = context or bpy.context
-    w = context.preferences.themes[0].user_interface.wcol_toolbar_item
-    return all(abs(a - b) < 2e-3 for a, b in zip(w.inner_sel, rgba(C.UI_TOOL_ACTIVE_FILL)))
+    ui = context.preferences.themes[0].user_interface
+    return all(abs(a - b) < 2e-3 for w in (ui.wcol_toolbar_item, ui.wcol_radio)
+               for a, b in zip(w.inner_sel, rgba(C.UI_TOOL_ACTIVE_FILL)))
 
 
 def ensure_theme(context=None):

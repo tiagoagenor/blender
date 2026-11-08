@@ -29,7 +29,8 @@ from . import handlers, shaders
 ORDER = 222
 
 GREY_OUT_OF_CONTEXT = (150, 150, 150)
-_style = {"show_edges": True, "show_profiles": True, "color_override": {}}
+_style = {"show_edges": True, "show_profiles": True, "color_override": {}, "back_edges": False, "xray": False}
+BACK_EDGE_COLOR = (60, 60, 60)
 _cache = {}          # mesh pointer -> entry dict
 _serial = {}         # mesh name -> int (bumped by mark_dirty / depsgraph)
 MAX_SIL_KEYS = 32
@@ -57,6 +58,18 @@ def set_style(show_edges, show_profiles_of_soft=True, color_override=None):
     _style["show_edges"] = bool(show_edges)
     _style["show_profiles"] = bool(show_profiles_of_soft)
     _style["color_override"] = dict(color_override or {})
+    _tag_redraw()
+
+
+def set_back_edges(on):
+    """Arestas traseiras (K, P1): edges hidden behind faces drawn dashed."""
+    _style["back_edges"] = bool(on)
+    _tag_redraw()
+
+
+def set_xray(on):
+    """Raio X (P1): edges drawn without depth test (faces are see-through)."""
+    _style["xray"] = bool(on)
     _tag_redraw()
 
 
@@ -146,7 +159,7 @@ def _entry(me, sh):
         return e
     data = edge_classes(me)
     ev = data["ev"][data["always"]]
-    e = dict(key=key, name=me.name, data=data, sil={},
+    e = dict(key=key, name=me.name, data=data, sil={}, segs=data["co"][ev],
              static=batch_for_shader(sh, 'LINES', {"pos": data["co"]}, indices=ev) if len(ev) else None)
     _cache[ptr] = e
     return e
@@ -226,11 +239,11 @@ def draw(dc):
                     col = grey
             except Exception:
                 pass
-        draws.append((M, col, [b for b in batches if b is not None]))
+        draws.append((M, col, [b for b in batches if b is not None], e))
     if not draws:
         return
     ps = ctx.preferences.system.pixel_size
-    gpu.state.depth_test_set('LESS_EQUAL')
+    gpu.state.depth_test_set('NONE' if _style["xray"] else 'LESS_EQUAL')
     gpu.state.depth_mask_set(False)
     gpu.state.blend_set('ALPHA')
     with shaders.offset_projection(rv3d):
@@ -238,7 +251,7 @@ def draw(dc):
         sh.uniform_float("lineWidth", 1.0 * ps)
         # 1 pt black: on a 1× display a smoothed 1 px line comes out grey — draw it crisp instead.
         _set_smooth(sh, ps >= 1.5)
-        for M, col, batches in draws:
+        for M, col, batches, _e in draws:
             if not batches:
                 continue
             with gpu.matrix.push_pop():
@@ -248,6 +261,16 @@ def draw(dc):
                     b.draw(sh)
     gpu.state.depth_test_set('NONE')
     gpu.state.blend_set('NONE')
+    if _style["back_edges"] and not _style["xray"]:
+        from . import prims
+        segs = []
+        for M, _col, _b, e in draws:
+            M3 = np.array(M, np.float32)
+            w = e["segs"].reshape(-1, 3) @ M3[:3, :3].T + M3[:3, 3]
+            w = w.reshape(-1, 2, 3)
+            segs.extend((tuple(s[0]), tuple(s[1])) for s in w)
+        if segs:
+            prims.dashed_many(dc, segs, colors.rgba(BACK_EDGE_COLOR), 1.0, 3, 3, depth='GREATER')
 
 
 def _set_smooth(sh, on):

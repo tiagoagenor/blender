@@ -12,6 +12,7 @@ Standard).
 
     line(dc, a, b, rgba, width=1.0, *, depth=True)       lines(dc, segs, rgba, width=1.0, *, depth=True)
     dashed(dc, a, b, rgba, width=1.0, dash_px=6, gap_px=4)
+    dashed_many(dc, segs, rgba, width=1.0, dash_px=6, gap_px=4, *, depth=True)
     dotted(dc, a, b, rgba)                               points(dc, pts, rgba, size_px, shape='CIRCLE')
     polygon(dc, pts, rgba, *, stipple=False)             text(dc, xy, s, size=11, rgba=(0,0,0,1), bg=None, align='LEFT')
     tooltip(dc, xy, lines)                               protractor(dc, center, normal, ref_dir, axis_color)
@@ -81,7 +82,7 @@ def _draw_lines(dc, coords, rgba, width, depth):
     if _is_pixel(dc):
         _polyline([_v3(c) for c in coords], rgba, width)
     elif depth:
-        gpu.state.depth_test_set('LESS_EQUAL')
+        gpu.state.depth_test_set(depth if isinstance(depth, str) else 'LESS_EQUAL')
         gpu.state.depth_mask_set(False)
         with shaders.offset_projection(dc.rv3d):
             _polyline([_v3(c) for c in coords], rgba, width)
@@ -147,9 +148,7 @@ def lines(dc, segs, rgba, width=1.0, *, depth=True):
     _draw_lines(dc, coords, rgba, width, depth)
 
 
-def dashed(dc, a, b, rgba, width=1.0, dash_px=6, gap_px=4):
-    """Dashes of constant SCREEN length (perspective-correct, depth-tested)."""
-    dash, gap = viewutil.ui_px(dash_px), viewutil.ui_px(gap_px)
+def _dash_coords(dc, a, b, dash, gap):
     if _is_pixel(dc):
         sa, sb = Vector(a[:2]), Vector(b[:2])
         L = (sb - sa).length
@@ -157,19 +156,34 @@ def dashed(dc, a, b, rgba, width=1.0, dash_px=6, gap_px=4):
         while d < L:
             coords += [sa.lerp(sb, d / L), sa.lerp(sb, min(L, d + dash) / L)]
             d += dash + gap
-        _draw_lines(dc, coords, rgba, width, False)
-        return
+        return coords
     p = _screen_params(dc, a, b, dash + gap)
     if p is None:
-        return
+        return []
     a, b, wa, wb, L = p
     if L < 1e-6:
-        return
+        return []
     coords, d = [], 0.0
     while d < L and len(coords) < 20000:
         coords += [_lift(a, b, wa, wb, d / L), _lift(a, b, wa, wb, min(L, d + dash) / L)]
         d += dash + gap
-    _draw_lines(dc, coords, rgba, width, True)
+    return coords
+
+
+def dashed(dc, a, b, rgba, width=1.0, dash_px=6, gap_px=4):
+    """Dashes of constant SCREEN length (perspective-correct, depth-tested)."""
+    dash, gap = viewutil.ui_px(dash_px), viewutil.ui_px(gap_px)
+    _draw_lines(dc, _dash_coords(dc, a, b, dash, gap), rgba, width, not _is_pixel(dc))
+
+
+def dashed_many(dc, segs, rgba, width=1.0, dash_px=6, gap_px=4, *, depth=True):
+    """Many dashed segments in one batch. `depth` = True / False / a depth test name ('GREATER' = only
+    the parts hidden behind faces, used for back edges)."""
+    dash, gap = viewutil.ui_px(dash_px), viewutil.ui_px(gap_px)
+    coords = []
+    for a, b in segs:
+        coords += _dash_coords(dc, a, b, dash, gap)
+    _draw_lines(dc, coords, rgba, width, depth if not _is_pixel(dc) else False)
 
 
 def _dot_points(dc, a, b, step):

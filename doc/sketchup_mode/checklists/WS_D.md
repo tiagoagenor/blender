@@ -20,7 +20,7 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
    6. [x] ícones próprios de pino (cinza-claro) e ⓘ (preto fino);
    7. [x] Bandeja **toda fechada** na 1ª abertura (o spike abre Estilos expandido);
    8. [x] arestas pretas (0,0,0) ~1 pt conferidas pela sonda em tamanho real; **filtro por atributo**: diagonal desenhada pelo usuário numa face plana fica visível (AC-LIN-2 visual)
-10. [ ] exportar sem modificadores (P1); Estilos aba Editar, Arestas traseiras, Raio X com cópia de verso desligada (P1)
+10. [x] exportar sem modificadores (P1); Estilos aba Editar, Arestas traseiras, Raio X com cópia de verso desligada (P1)
 
 ## Aceite e comandos (referência)
 - **Aceite**: sondas de cor (céu, horizonte, fundo, cromo, LTS ativo, Bandeja, status, face frente ≈255 / lateral ≈210 / topo ≈160, verso padrão, verso pintado sem tom azul, aresta preta, diagonal coplanar visível); passos 1, 2, 11, 12 da §12; ordem/separadores por `state_dump`; AC-PNT-1 (visual, com F); prints comparativos aprovados pelo líder.
@@ -53,3 +53,12 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - Decisão do líder (sobrepõe §4.4): `tray.SHOW_P2_SECTIONS = True` — Bandeja na ordem do SketchUp: Informações da entidade, Materiais, Componentes, Estilos, **Sombras**, Cenas, **Suavizar arestas**, **Estruturador** (P2 = linhas acinzentadas; "Em breve." só no corpo aberto). Etiquetas nunca.
 - `su/draw/selection_draw.py` (camada SELECTION=30), lendo `core/selection` (B): face selecionada = retícula de pontos azuis (shader stipple, Metal OK), aresta selecionada = azul #0000FF 1 pt por cima da preta, objeto/grupo selecionado = caixa envolvente azul (objeto + descendentes, nos eixos do objeto), grupo aberto = caixa tracejada cinza. Redesenho no evento "selection".
 - scn_d: sondas de seleção (retícula azul na face, aresta azul 0,0,255). Print: `doc/sketchup_mode/screens/casca_v6.png`.
+
+## Entrega 4 — todos os ícones originais + item 10 (P1)
+- Os 41 ids de ferramenta usam ícones ORIGINAIS vetoriais (`draw.*`; nenhum glifo do Blender recolorido): Pesquisar, Laço, Criar componente, Mão livre, Retângulo, Retângulo girado, Círculo, Polígono, Arco, Arco de dois pontos, Arco de três pontos, Pizza, Siga-me, Equidistância, Virar, Dimensões, Texto, Texto em 3D, Plano de seção, Eixos, Janela de zoom, Extensões de zoom, Anterior, Posição da câmera, Percorrer, Olhar ao redor, Campo de visão (+ os 13 da entrega 2). Estilo de "pontos de inferência": ponto vermelho = próximo clique, azul-marinho = ponto fixo, ciano = geometria.
+- `su/ops/file_ops.py`: `su.export(fmt=OBJ|GLTF|STL)` (ExportHelper) SEM modificadores (sem a cópia de verso; teste unitário confere o nº de faces).
+- Estilos › Editar (tray_styles): Arestas, Arestas traseiras, Perfis, Estilo de face (Raio X, Grade de linhas, Linha oculta, Sombreado, Sombreado com texturas, Monocromático), Eixos — ligados a `Scene.su_style`. Abas pelo `wm.su_tray.styles_tab`; tema `wcol_radio` claro.
+- Arestas traseiras: arestas escondidas tracejadas (`prims.dashed_many(..., depth='GREATER')`). Raio X / Grade de linhas: faces transparentes (alfa 0,5 / 0), arestas sem teste de profundidade, cópia de verso desligada (`display_gn.set_back_copy(False)`).
+- **A**: atalho K → `su.style_toggle(prop="show_back_edges")` no keymap `Window`.
+- `prims.dashed_many(dc, segs, rgba, width, dash_px, gap_px, *, depth)` adicionada (extensão compatível do contrato).
+- Print: `doc/sketchup_mode/screens/casca_v7.png` (Estilos › Editar aberto, arestas traseiras ligadas).

@@ -87,6 +87,20 @@ def configure_space(space, studio_light=""):
     space.clip_end = 20000.0
 
 
+def _apply_face_style(sh, face):
+    """Estilo de face (P1): Raio X (faces 50 % transparent), Grade de linhas (faces hidden, only edges),
+    Linha oculta (unlit white faces hiding edges), Sombreado / Sombreado com texturas (materials, lit),
+    Monocromático (lit, materials ignored)."""
+    sh.show_xray = face in ('XRAY', 'WIREFRAME')
+    sh.xray_alpha = 0.0 if face == 'WIREFRAME' else 0.5
+    sh.light = 'FLAT' if face == 'HIDDEN_LINE' else 'STUDIO'
+    if face in ('HIDDEN_LINE', 'MONOCHROME'):
+        sh.color_type = 'SINGLE'
+        sh.single_color = (1.0, 1.0, 1.0)
+    else:
+        sh.color_type = 'MATERIAL'
+
+
 def _studio_light_name():
     theme = _sib("theme")
     if theme is None or bpy.app.background:
@@ -110,7 +124,8 @@ def apply(context=None):
     vs.exposure = 0.0
     vs.gamma = 1.0
     st = getattr(scene, "su_style", None)
-    xray = st is not None and st.face_style == 'XRAY'
+    face = st.face_style if st is not None else 'TEXTURED'
+    see_through = face in ('XRAY', 'WIREFRAME')       # edges without depth test, no back copy
     if not bpy.app.background:
         light = _studio_light_name()
         for win in context.window_manager.windows:
@@ -120,7 +135,7 @@ def apply(context=None):
                 for space in area.spaces:
                     if space.type == 'VIEW_3D':
                         configure_space(space, light)
-                        space.shading.show_xray = xray
+                        _apply_face_style(space.shading, face)
                 area.tag_redraw()
     axes = _sib("draw.axes")
     if axes is not None and st is not None:
@@ -128,9 +143,11 @@ def apply(context=None):
     edges = _sib("draw.edges")
     if edges is not None and st is not None:
         edges.set_style(st.show_edges, st.show_profiles)
+        edges.set_back_edges(st.show_back_edges)
+        edges.set_xray(see_through)
     gn = _sib("draw.display_gn")
     if gn is not None:
-        gn.set_back_copy(not xray)
+        gn.set_back_copy(not see_through)
     events.emit("style")
 
 

@@ -4,11 +4,13 @@
 Which edges are drawn is decided by ATTRIBUTES, never by angle (CRITICA_R3_SKETCHUP §2: a line the user
 draws on a flat face has 0° and must show):
   * `su_bridge` (CDT bridge) or `su_hidden` → never;
-  * `su_soft` → only as a PROFILE (silhouette): the two faces lie on opposite sides w.r.t. the camera
-    (the outline of a cylinder, as in SketchUp); a soft edge with < 2 faces is drawn;
+  * `su_soft` → only as a SILHOUETTE: the two faces lie on opposite sides w.r.t. the camera (the outline
+    of a cylinder, as in SketchUp) — always drawn, 1 pt, like any edge; a soft edge with < 2 faces is drawn;
   * everything else → always. Meshes without these attributes draw all their edges.
   * hidden FACES (`su_hidden_face`, collapsed by the GN) keep their edges, as in SketchUp; a soft edge
     next to a hidden face is drawn always (it borders the visible surface).
+  * Perfis (Estilos, OFF in the default Simple Style): when ON, the OUTLINE of every object (silhouette
+    edges of any kind + border edges) is drawn again PROFILE_WIDTH thick.
 Black 1 pt `POLYLINE_UNIFORM_COLOR`, depth LESS_EQUAL with the spike's polygon-offset projection.
 Uses the ORIGINAL mesh (`obj.original.data`), not the evaluated one (the GN back copy doubles faces).
 Groups/instances: every depsgraph object instance, drawn with its `matrix_world` (batches are in local
@@ -31,9 +33,9 @@ from . import handlers, shaders
 ORDER = 222
 
 GREY_OUT_OF_CONTEXT = (150, 150, 150)
-_style = {"show_edges": True, "show_profiles": True, "color_override": {}, "back_edges": False, "xray": False}
+_style = {"show_edges": True, "show_profiles": False, "color_override": {}, "back_edges": False, "xray": False}
 BACK_EDGE_COLOR = (60, 60, 60)
-PROFILE_WIDTH = 1.5        # pt — silhouettes of smooth surfaces read a bit heavier, like SketchUp's profiles
+PROFILE_WIDTH = 2.0        # pt — Perfis: outline of objects (SketchUp's default profile thickness 3 px)
 _cache = {}          # mesh pointer -> entry dict
 _serial = {}         # mesh name -> int (bumped by mark_dirty / depsgraph)
 MAX_SIL_KEYS = 32
@@ -56,8 +58,10 @@ def mark_dirty(doc_key=None, **_kw):
     _tag_redraw()
 
 
-def set_style(show_edges, show_profiles_of_soft=True, color_override=None):
-    """`color_override`: {"edge": rgb255, "out_of_context": rgb255} (Estilos, Raio X… P1)."""
+def set_style(show_edges, show_profiles_of_soft=False, color_override=None):
+    """Perfis (`show_profiles_of_soft`, name kept for the frozen contract): thick object outlines.
+    Silhouettes of smooth surfaces are always drawn. `color_override`: {"edge": rgb255,
+    "out_of_context": rgb255} (Estilos, Raio X… P1)."""
     _style["show_edges"] = bool(show_edges)
     _style["show_profiles"] = bool(show_profiles_of_soft)
     _style["color_override"] = dict(color_override or {})
@@ -138,15 +142,21 @@ def edge_classes(me):
         nxt = (f0 >= 0) & hf[np.maximum(f0, 0)] | (f1 >= 0) & hf[np.maximum(f1, 0)]
         profile &= ~nxt
     always = shown & ~profile
+    outline = shown & (counts >= 1)               # Perfis candidates (silhouettes of any edge + borders)
     return dict(co=co.reshape(-1, 3), ev=ev.reshape(-1, 2), f0=f0, f1=f1, fn=fn.reshape(-1, 3),
-                fc=fc.reshape(-1, 3), always=always, profile=profile)
+                fc=fc.reshape(-1, 3), always=always, profile=profile, outline=outline)
 
 
-def silhouette_mask(data, eye_local, ortho_dir_local=None):
-    """Soft edges whose two faces are on opposite sides of the eye (or of the view direction in ortho)."""
-    idx = np.nonzero(data["profile"])[0]
+def silhouette_mask(data, eye_local, ortho_dir_local=None, which="profile"):
+    """Edges of `data[which]` whose two faces are on opposite sides of the eye (or of the view direction
+    in ortho): which='profile' → soft edges; 'outline' → any edge (border edges always included)."""
+    cand = np.nonzero(data[which])[0]
+    if not len(cand):
+        return cand
+    border = cand[data["f1"][cand] < 0]
+    idx = cand[data["f1"][cand] >= 0]
     if not len(idx):
-        return idx
+        return border
     fn, fc, f0, f1 = data["fn"], data["fc"], data["f0"][idx], data["f1"][idx]
     if ortho_dir_local is not None:
         d = -np.asarray(ortho_dir_local, np.float32)
@@ -156,7 +166,7 @@ def silhouette_mask(data, eye_local, ortho_dir_local=None):
         eye = np.asarray(eye_local, np.float32)
         s0 = np.einsum("ij,ij->i", fn[f0], eye - fc[f0]) > 0
         s1 = np.einsum("ij,ij->i", fn[f1], eye - fc[f1]) > 0
-    return idx[s0 != s1]
+    return np.concatenate((idx[s0 != s1], border))
 
 
 # ------------------------------------------------------------------------------------------- batches
@@ -174,14 +184,14 @@ def _entry(me, sh):
     return e
 
 
-def _silhouette_batch(e, sh, eye_local, ortho_dir_local):
-    k = tuple(round(float(x), 3) for x in (ortho_dir_local if ortho_dir_local is not None else eye_local))
+def _silhouette_batch(e, sh, eye_local, ortho_dir_local, which="profile"):
+    k = (which,) + tuple(round(float(x), 3) for x in (ortho_dir_local if ortho_dir_local is not None else eye_local))
     b = e["sil"].get(k, False)
     if b is not False:
         return b
     if len(e["sil"]) > MAX_SIL_KEYS:
         e["sil"].clear()
-    sel = silhouette_mask(e["data"], eye_local, ortho_dir_local)
+    sel = silhouette_mask(e["data"], eye_local, ortho_dir_local, which)
     b = batch_for_shader(sh, 'LINES', {"pos": e["data"]["co"]}, indices=e["data"]["ev"][sel]) if len(sel) else None
     e["sil"][k] = b
     return b
@@ -234,13 +244,14 @@ def draw(dc):
         M = inst.matrix_world.copy()
         e = _entry(me, sh)
         batches = [(e["static"], 1.0)]
-        if _style["show_profiles"] and e["data"]["profile"].any():
+        kinds = (["profile"] if e["data"]["profile"].any() else []) + (["outline"] if _style["show_profiles"] else [])
+        if kinds:
             Minv = M.inverted_safe()
-            if persp:
-                batches.append((_silhouette_batch(e, sh, Minv @ eye, None), PROFILE_WIDTH))
-            else:
-                d = (Minv.to_3x3() @ view_dir).normalized()
-                batches.append((_silhouette_batch(e, sh, None, d), PROFILE_WIDTH))
+            eye_l = Minv @ eye if persp else None
+            d = None if persp else (Minv.to_3x3() @ view_dir).normalized()
+            for which in kinds:      # smooth-surface silhouettes always (1 pt); Perfis = thick outline
+                batches.append((_silhouette_batch(e, sh, eye_l, d, which),
+                                PROFILE_WIDTH if which == "outline" else 1.0))
         col = black
         if in_ctx is not None:
             try:

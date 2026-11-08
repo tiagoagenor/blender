@@ -51,3 +51,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - [x] Verificado com D/C: modificador GN por objeto (cópia de verso nas duas instâncias), arestas de D em cache por malha e desenhadas com o `matrix_world` de cada instância, `spatial.ray_cast` de C acerta a instância certa (scn_b).
 - [ ] **F**: `geom_transform.duplicate_object` e a área de transferência copiam a malha (`new.data = obj.data.copy()`). Para cópia de instância (Mover+Option, Colar) usar `document.duplicate(obj, parent)`.
 - Testes: `test_b_components.py` (9) + seção de componentes no `scn_b` (46 verificações; prints `b_componentes*.png`).
+
+### Atributos de face preservados (pedido de F: `su_hidden_face`)
+- [x] Toda face que o kernel recria herda os atributos da face original: material, `smooth` e **todas** as camadas de face bool/int/float (`su_back_mat`, `su_hidden_face` de F e futuras). Vale para divisão por `add_edge`/`auto_faces`, furo desenhado dentro, fusão do `erase_edges`/`merge_coplanar`, `rebuild_face` (herda da 1ª face substituída; material e verso explícitos vencem) e dobra (`face_split` já copiava). `group_from`/`explode` copiam também.
+- API: `geom.face_data(bm, f)`, `geom.apply_face_data(bm, f, data, skip=())`, `geom.match_face_layers(src_bm, dst_bm)`, `geom.copy_face_layers(src_bm, f, dst_bm, nf)`.
+- Armadilha: criar uma camada no bmesh **invalida as referências Python aos elementos** (ReferenceError). Criar as camadas antes de pegar faces (`match_face_layers`).

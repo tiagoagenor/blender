@@ -484,6 +484,62 @@ class TestBridgeCrossing(KernelCase):
         self.bm.verts.remove(v)
 
 
+class TestFaceAttributesCarried(KernelCase):
+    """F's su_hidden_face (and any other face layer) survives every face the kernel recreates."""
+
+    def hide_all(self):
+        lay = self.bm.faces.layers.bool.get("su_hidden_face") or self.bm.faces.layers.bool.new("su_hidden_face")
+        for f in self.bm.faces:
+            f[lay] = True
+            f.material_index = 4
+
+    def hidden(self):
+        lay = self.bm.faces.layers.bool["su_hidden_face"]
+        return [f[lay] for f in self.bm.faces]
+
+    def test_split_by_add_edge(self):
+        rect(self.bm, 0, 0, 3, 2)
+        self.hide_all()
+        geom.add_edge(self.bm, V((0, 0, 0)), V((3, 2, 0)))
+        self.assertEqual(self.hidden(), [True, True])
+        self.assertEqual({f.material_index for f in self.bm.faces}, {4})
+
+    def test_hole_drawn_inside(self):
+        rect(self.bm, 0, 0, 3, 3)
+        self.hide_all()
+        rect(self.bm, 1, 1, 2, 2)
+        self.assertTrue(all(self.hidden()))
+
+    def test_merge_by_erase_edge(self):
+        rect(self.bm, 0, 0, 4, 2)
+        geom.add_edge(self.bm, V((2, 0, 0)), V((2, 2, 0)))
+        self.hide_all()
+        geom.erase_edges(self.bm, [find_edge(self.bm, (2, 0, 0), (2, 2, 0))])
+        self.assertEqual(self.hidden(), [True])
+
+    def test_rebuild_face_inherits(self):
+        rect(self.bm, 0, 0, 3, 3)
+        self.hide_all()
+        geom.rebuild_face(self.bm, SQ3, [H1], V((0, 0, -1)), 2, 1, through_holes={0})
+        self.assertTrue(all(self.hidden()))
+        self.assertEqual({f.material_index for f in self.bm.faces}, {2})     # explicit material wins
+
+    def test_fold_keeps_flag(self):
+        rect(self.bm, 0, 0, 2, 2)
+        self.hide_all()
+        f = first(self.bm.faces)
+        next(v for v in f.verts if v.co.x > 1 and v.co.y > 1).co.z = 0.3
+        geom.ensure_planar(self.bm, [f])
+        self.assertEqual(self.hidden(), [True, True])
+
+    def test_new_face_is_visible(self):
+        rect(self.bm, 0, 0, 1, 1)
+        self.hide_all()
+        rect(self.bm, 5, 5, 6, 6)
+        lay = self.bm.faces.layers.bool["su_hidden_face"]
+        self.assertEqual(sorted(f[lay] for f in self.bm.faces), [False, True])
+
+
 class TestHelpers(unittest.TestCase):
     def test_circle_and_arcs(self):
         pts = geom.circle_points(V((0, 0, 0)), UP, 2.0, 24)

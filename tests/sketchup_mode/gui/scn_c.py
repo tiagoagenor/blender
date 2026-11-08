@@ -3,7 +3,8 @@
 
 Builds a 2×2×1 box in the root document, aims the view at it, queries ENGINE on the real region/RegionView3D and shows
 each result through STATE.inference (the tool dispatcher of A does this on hover later). Writes
-full screenshots plus <out_dir>/c_inferencia.png: a 2×2 grid of crops around the markers.
+full screenshots plus <out_dir>/c_inferencia.png: a 3×2 grid of crops around the markers
+(endpoint, midpoint, red axis, locked blue axis, from point, endpoint in a group).
 """
 
 import hashlib
@@ -40,7 +41,7 @@ def _crop(path, cx, cy):
 
 def _grid(crops, path):
     import numpy as np
-    rows = [np.concatenate(crops[i:i + 2], axis=1) for i in range(0, len(crops), 2)]
+    rows = [np.concatenate(crops[i:i + 3], axis=1) for i in range(0, len(crops), 3)]
     rows.reverse()                                   # image rows start at the bottom
     out = np.concatenate(rows, axis=0)
     h, w = out.shape[:2]
@@ -102,32 +103,53 @@ def run(h):
         kw.setdefault("locks", state.Locks())
         return inference.QueryCtx(region, rv3d, p, **kw)
 
-    # 1. endpoint
+    # 1. endpoint (green)
     inf = eng.query(q(xy((3, 1, 1), 4, 3)))
     h.check("endpoint on the real viewport", inf.kind == "ENDPOINT" and (inf.point - Vector((3, 1, 1))).length < 1e-6,
             (inf.kind, tuple(inf.point)))
     shots.append((show(inf, "c_endpoint"), inf))
-    yield 0.6
-    # 2. red axis from the corner
+    yield 0.4
+    # 2. midpoint (cyan)
+    inf = eng.query(q(xy((2, 1, 1), 2, 3)))
+    h.check("midpoint", inf.kind == "MIDPOINT" and not inf.in_context, (inf.kind, inf.in_context))
+    shots.append((show(inf, "c_midpoint"), inf))
+    yield 0.4
+    # 3. red axis from the corner (solid red)
     a = Vector((3, 1, 1))
     inf = eng.query(q(xy((4.6, 1, 1)), anchor=a))
     h.check("red axis from anchor", inf.linear == "AXIS_X" and abs(inf.point.y - 1) < 1e-3 and abs(inf.point.z - 1) < 1e-3,
             (inf.kind, inf.linear, tuple(inf.point)))
     shots.append((show(inf, "c_axis_x"), inf))
-    yield 0.6
-    # 3. blue axis locked with ↑ (thick)
+    yield 0.4
+    # 4. blue axis locked with ↑ (thick)
     locks = state.Locks()
     inference.lock_from_arrow('UP_ARROW', locks)
     inf = eng.query(q(xy((3, 1, 2.1)), anchor=a, locks=locks))
     h.check("↑ locks the blue axis", inf.linear == "AXIS_Z" and inf.locked, (inf.linear, inf.locked))
     shots.append((show(inf, "c_axis_z_locked"), inf))
-    yield 0.6
-    # 4. midpoint, shown as geometry of a group (magenta + 2nd line)
-    inf = eng.query(q(xy((2, 1, 1), 2, 3)))
-    h.check("midpoint", inf.kind == "MIDPOINT", inf.kind)
-    inf.in_context = 'GROUP'
-    shots.append((show(inf, "c_midpoint_group"), inf))
-    yield 0.6
+    yield 0.4
+    # 5. "Do ponto": aligned along green with the (acquired) corner — dotted green
+    STATE.ref_points[:] = []
+    inference.add_ref_point((3, 1, 1))
+    inf = eng.query(q(xy((3, -0.6, 1))))
+    h.check("from point", inf.linear == "FROM_POINT" and abs(inf.point.x - 3) < 1e-3, (inf.linear, tuple(inf.point)))
+    shots.append((show(inf, "c_from_point"), inf))
+    yield 0.4
+    # 6. endpoint of geometry inside a real group (B) → purple-magenta marker + "no grupo"
+    g = document.create_group("C_grupo")
+    gbm = g.bm
+    gv = [gbm.verts.new(c) for c in ((4.4, -0.2, 0), (5.4, -0.2, 0), (5.4, 0.6, 0), (4.4, 0.6, 0),
+                                     (4.4, -0.2, 0.7), (5.4, -0.2, 0.7), (5.4, 0.6, 0.7), (4.4, 0.6, 0.7))]
+    for f in ((0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)):
+        gbm.faces.new([gv[i] for i in f])
+    g.write(undo_key=None)
+    g.obj.hide_viewport = False
+    bpy.context.view_layer.update()
+    STATE.ref_points[:] = []
+    inf = eng.query(q(xy((5.4, -0.2, 0.7), 3, 2)))
+    h.check("endpoint in group", inf.kind == "ENDPOINT" and inf.in_context == "GROUP", (inf.kind, inf.in_context))
+    shots.append((show(inf, "c_endpoint_group"), inf))
+    yield 0.4
 
     # screenshots (one redraw per shot)
     crops = []
@@ -158,7 +180,7 @@ def run(h):
             crops.append(_crop(path, region.x + s[0], region.y + s[1]))
         except Exception as ex:
             h.check("crop " + name, False, repr(ex))
-    if len(crops) == 4:
+    if len(crops) == len(shots):
         grid = os.path.join(h.out_dir, "c_inferencia.png")
         _grid(crops, grid)
         h.check("grid written", os.path.isfile(grid), grid)

@@ -63,6 +63,13 @@ class TestFormat(unittest.TestCase):
         self.assertEqual(units.format_length(1.0, units.Units(length_unit='MM', length_precision=0,
                                                               decimal='COMMA')), "1000mm")
 
+    def test_approx_mark(self):
+        self.assertEqual(units.format_length(2.5, COMMA, mark_approx=True), "2,50m")
+        self.assertEqual(units.format_length(2.5004, COMMA, mark_approx=True), "~ 2,50m")
+        self.assertEqual(units.format_length(2.5004, COMMA), "2,50m")
+        self.assertEqual(units.format_angle(math.atan(2 / 3), COMMA, mark_approx=True), "~ 33,7°")
+        self.assertEqual(units.format_angle(math.pi / 2, COMMA, mark_approx=True), "90,0°")
+
     def test_area_angle(self):
         self.assertEqual(units.format_area(6.0, COMMA), "6,00m²")
         self.assertEqual(units.format_angle(math.pi / 2, COMMA), "90,0°")

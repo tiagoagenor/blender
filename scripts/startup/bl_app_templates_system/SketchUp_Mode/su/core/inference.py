@@ -211,6 +211,7 @@ class InferenceEngine:
     def reset(self):
         self._last = None
         self._last_edge = None          # (doc_key, edge_idx, unit direction) of the last hovered edge
+        self._curves = []               # [(doc_key, curve_id)] last hovered curves (Centro), newest last
         self._hover_ident = None
         self._hover_t0 = 0.0
         self._hover_done = False
@@ -362,6 +363,13 @@ class InferenceEngine:
                                 ref_edge=(h.doc_key, h.index), obj_name=h.obj.name if h.obj else "")
                 if self._radius_ok(h.dist, rp, _ident(inf), prev):
                     cands.append((PRIORITY["MIDPOINT"], h.dist, inf, h.obj))
+        if "CENTERS" in q.flags:
+            for key, cid, co, obj in self._curve_centers():
+                dist = _sdist(q, co)
+                inf = Inference(kind="CENTER", point=co, doc_key=key, elem=("CURVE", cid),
+                                obj_name=obj.name)
+                if self._radius_ok(dist, rp, _ident(inf), prev):
+                    cands.append((PRIORITY["CENTER"], dist, inf, obj))
         if "INTERSECTIONS" in q.flags:
             cands.extend(self._intersections(q, proj, rp, prev))
         g_points, _g_lines = _guides() if "GUIDES" in q.flags else ([], [])
@@ -563,6 +571,58 @@ class InferenceEngine:
         p = _ray_plane(o, d, c, vd) or c
         return Inference(kind="FREE", point=p, plane=(c, vd))
 
+    # ------------------------------------------------------------------ curves (Centro)
+    def _curve_centers(self):
+        """World centres of the recently hovered curves (B: su_curve edge layer + su_doc.curves meta,
+        meta["center"] = [x, y, z] in the document's local space)."""
+        out = []
+        ent = _sibling("entities")
+        docmod = _sibling("document")
+        if ent is None or docmod is None:
+            return out
+        for key, cid in self._curves:
+            try:
+                doc = docmod.get_by_key(key)
+                meta = ent.get_curve_meta(doc, cid) if doc is not None else None
+                c = meta.get("center") if isinstance(meta, dict) else None
+                if c is None or len(c) != 3:
+                    continue
+                obj = doc.obj
+                out.append((key, cid, obj.matrix_world @ Vector(c), obj))
+            except Exception:
+                continue
+        return out
+
+    def _remember_curve(self, inf):
+        """Hovering a curve edge (or its vertex) makes its centre inferable (SketchUp: hover the arc/circle)."""
+        if inf.elem is None or inf.elem[0] not in ("EDGE", "VERT") or not inf.doc_key:
+            return
+        obj = None
+        for key, o in spatial.documents():
+            if key == inf.doc_key:
+                obj = o
+                break
+        if obj is None:
+            return
+        me = obj.data
+        a = me.attributes.get("su_curve")
+        if a is None or a.domain != 'EDGE':
+            return
+        idx = inf.elem[1]
+        if inf.elem[0] == "EDGE":
+            edges = [idx] if 0 <= idx < len(me.edges) else []
+        else:
+            edges = [e.index for e in me.edges if idx in e.vertices]
+        for ei in edges:
+            cid = a.data[ei].value
+            if cid:
+                k = (inf.doc_key, int(cid))
+                if k in self._curves:
+                    self._curves.remove(k)
+                self._curves.append(k)
+                del self._curves[:-K.MAX_REF_POINTS]
+                return
+
     def _finish(self, q, inf):
         s = _project(q, inf.point)
         inf.screen = s if s is not None else (float(q.xy[0]), float(q.xy[1]))
@@ -577,6 +637,8 @@ class InferenceEngine:
             inf.tooltip_key = TOOLTIP_KEYS[inf.kind]
         if inf.kind not in POINT_KINDS and inf.kind not in ("ON_EDGE", "ON_GUIDE") and inf.linear:
             inf.tooltip_key = TOOLTIP_KEYS.get(inf.linear, inf.tooltip_key)
+        if inf.kind in ("ON_EDGE", "MIDPOINT", "ENDPOINT"):
+            self._remember_curve(inf)
         if inf.kind == "ON_EDGE" and inf.ref_edge is not None and inf.direction is not None:
             self._last_edge = (inf.ref_edge[0], inf.ref_edge[1], inf.direction.normalized())
         elif inf.kind == "MIDPOINT" and inf.ref_edge is not None:
@@ -640,6 +702,60 @@ def lock_from_arrow(event_type, locks):
     return True
 
 
+# ---------------------------------------------------------------------------------------------- shape inferences (P1)
+GOLDEN = (1.0 + math.sqrt(5.0)) / 2.0
+
+
+def rect_shape(q, corner, p, u, v):
+    """Retângulo: snap the opposite corner `p` (on the plane spanned by unit u, v through `corner`) to a
+    Quadrado / Seção áurea diagonal when the cursor is within SNAP_PX_AXIS of it.
+    Returns an Inference (kind FREE, tooltip 'inf.square' | 'inf.golden', ref_point = corner,
+    direction = unit diagonal) or None. Shift-lock = keep passing the returned direction as q.line."""
+    corner, p, u, v = Vector(corner), Vector(p), Vector(u).normalized(), Vector(v).normalized()
+    d = p - corner
+    a, b = d.dot(u), d.dot(v)
+    if abs(a) < K.GEOM_TOL or abs(b) < K.GEOM_TOL:
+        return None
+    sa, sb = math.copysign(1.0, a), math.copysign(1.0, b)
+    ra = _px(K.SNAP_PX_AXIS)
+    best = None
+    for key, ru, rv in (("inf.square", 1.0, 1.0), ("inf.golden", GOLDEN, 1.0), ("inf.golden", 1.0, GOLDEN)):
+        diag = (u * (sa * ru) + v * (sb * rv)).normalized()
+        o, dr = spatial.Projection(q.region, q.rv3d, []).ray(q.xy)
+        s = spatial.closest_on_line_to_ray(corner, diag, o, dr)
+        if s is None or s <= 0.0:
+            continue
+        pt = corner + diag * s
+        dist = _sdist(q, pt)
+        if dist <= ra and (best is None or dist < best[0]):
+            best = (dist, Inference(kind="FREE", point=pt, ref_point=corner.copy(), direction=diag,
+                                    tooltip_key=key))
+    if best is None:
+        return None
+    inf = best[1]
+    s = _project(q, inf.point)
+    inf.screen = s if s is not None else (float(q.xy[0]), float(q.xy[1]))
+    return inf
+
+
+def arc_semicircle(q, a, b, bulge_point, normal):
+    """Arco de dois pontos: when the bulge is within SNAP_PX_AXIS (screen) of half the chord, snap it
+    ("Semicírculo"). Returns (bulge, tooltip_key) — bulge signed along the in-plane perpendicular of ab;
+    tooltip_key '' when not snapped."""
+    a, b, bp, n = Vector(a), Vector(b), Vector(bulge_point), Vector(normal).normalized()
+    chord = b - a
+    if chord.length < K.GEOM_TOL:
+        return 0.0, ""
+    perp = n.cross(chord).normalized()
+    mid = (a + b) * 0.5
+    bulge = (bp - mid).dot(perp)
+    half = chord.length * 0.5
+    target = mid + perp * math.copysign(half, bulge if bulge != 0.0 else 1.0)
+    if _sdist(q, target) <= _px(K.SNAP_PX_AXIS):
+        return math.copysign(half, bulge if bulge != 0.0 else 1.0), "inf.half_circle"
+    return bulge, ""
+
+
 def hover_plane(q):
     """Plane for gizmos before the first click (Círculo, Girar, Transferidor, Retângulo):
     arrow lock → the plane whose normal is that axis; face under the cursor → its plane;
@@ -692,6 +808,9 @@ STRINGS = {
     "inf.tangent": {"pt_BR": "Tangente no vértice", "en": "Tangent at Vertex"},
     "inf.in_group": {"pt_BR": "no grupo", "en": "in Group"},
     "inf.in_component": {"pt_BR": "no componente", "en": "in Component"},
+    "inf.square": {"pt_BR": "Quadrado", "en": "Square"},
+    "inf.golden": {"pt_BR": "Seção áurea", "en": "Golden Section"},
+    "inf.half_circle": {"pt_BR": "Semicírculo", "en": "Half Circle"},
 }
 
 

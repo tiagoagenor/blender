@@ -170,13 +170,21 @@ def _fmt_number(v, precision, sep):
     return s.replace(".", sep) if sep != "." else s
 
 
-def format_length(m, units=None):
-    """Meters → '2,50m' in the model unit and precision."""
+def is_approx(v, precision):
+    """True when showing `v` with `precision` decimals hides digits (SketchUp prefixes '~ ')."""
+    q = round(v, max(0, int(precision)))
+    return abs(v - q) > 1e-9 * max(1.0, abs(v))
+
+
+def format_length(m, units=None, *, mark_approx=False):
+    """Meters → '2,50m' in the model unit and precision; mark_approx → '~ 2,50m' when rounded (P1)."""
     u = _u(units)
     unit = getattr(u, "length_unit", 'M')
     v = m / METERS_PER[unit]
-    s = _fmt_number(v, getattr(u, "length_precision", 2), decimal_sep(u))
-    return s + SUFFIX[unit] if getattr(u, "show_suffix", True) else s
+    prec = getattr(u, "length_precision", 2)
+    s = _fmt_number(v, prec, decimal_sep(u))
+    s = s + SUFFIX[unit] if getattr(u, "show_suffix", True) else s
+    return "~ " + s if mark_approx and is_approx(v, prec) else s
 
 
 def format_area(m2, units=None):
@@ -188,10 +196,13 @@ def format_area(m2, units=None):
     return s + AREA_SUFFIX[unit] if getattr(u, "show_suffix", True) else s
 
 
-def format_angle(rad, units=None):
-    """Radians → '90,0°'."""
+def format_angle(rad, units=None, *, mark_approx=False):
+    """Radians → '90,0°' (mark_approx → '~ 33,7°' when rounded)."""
     u = _u(units)
-    return _fmt_number(math.degrees(rad), getattr(u, "angle_precision", 1), decimal_sep(u)) + "°"
+    deg = math.degrees(rad)
+    prec = getattr(u, "angle_precision", 1)
+    s = _fmt_number(deg, prec, decimal_sep(u)) + "°"
+    return "~ " + s if mark_approx and is_approx(deg, prec) else s
 
 
 def format_number(v, units=None, precision=2):

@@ -2,13 +2,16 @@
 """Inference feedback (owner: C). PLANO.md §3.2, RESEARCH_SKETCHUP §5 (colours/shapes of the markers).
 
 Draws `STATE.inference` (set by the tool dispatcher / hover) in region pixels, on top of everything:
-  * linear indicator from `ref_point` to `point`: axis colour (red/green/blue), magenta for
-    parallel / perpendicular / perpendicular-to-face (+ the reference edge in magenta), dotted in the
-    axis colour for "Do ponto"; dotted when inferred, solid and thick when locked (Shift / arrow);
+  * linear indicator from `ref_point` to `point`: SOLID line in the axis colour (red/green/blue) or
+    magenta for parallel / perpendicular / perpendicular-to-face (+ the reference edge in magenta),
+    thick when locked (Shift / arrow); "Do ponto" = thin DOTTED line in the axis colour from the
+    reference point (RESEARCH_SKETCHUP §5.2, §5.4);
   * point marker at the snapped point: Ponto de extremidade = green circle, Ponto central = cyan circle,
     Em aresta = red square, Em face = blue diamond, Interseção = red ×, Centro = blue circle,
     Ponto de orientação = slate circle, Na linha = red square, Ponto de origem = dark circle;
-    magenta-purple for geometry in a group/component (Inference.in_context);
+    geometry inside a group/component (Inference.in_context) → every point marker in purple-magenta
+    (115,90,165) + "no grupo" (RESEARCH_SKETCHUP §5.1: "Inside groups/components, all point markers are
+    magenta"; ref sheet "Endpoint / Origin in Component");
   * the ScreenTip (draw/tooltips.py) with the 2nd line "no grupo"/"no componente".
 Layers: POST_PIXEL "inference_marker" (order 25, between TOOL_2D and TOOLTIP) and
 "inference_tooltip" (TOOLTIP = 30).
@@ -149,7 +152,16 @@ def _linear_rgb(inf):
     return LINE_BRIGHT.get(inf.linear) or LINEAR_COLORS.get(inf.linear, colors.INF_FROM_POINT)
 
 
+SHAPE_KEYS = ("inf.square", "inf.golden")
+
+
 def draw_linear(dc, inf):
+    if inf.ref_point is not None and not inf.linear and inf.tooltip_key in SHAPE_KEYS:
+        # Quadrado / Seção áurea: dashed diagonal with blue dots (RESEARCH_SKETCHUP §5.3)
+        a, b = _project(dc, inf.ref_point), _project(dc, inf.point)
+        if a is not None and b is not None:
+            _dots(a, b, _ui(DOT_STEP_PX * 1.5), max(2.0, _ui(2.0)), colors.rgba(colors.INF_CENTER))
+        return
     if not inf.linear or inf.ref_point is None:
         return
     a, b = _project(dc, inf.ref_point), _project(dc, inf.point)
@@ -162,10 +174,15 @@ def draw_linear(dc, inf):
             ea, eb = _project(dc, e[0]), _project(dc, e[1])
             if ea is not None and eb is not None:
                 _segment(ea, eb, _ui(2.0), rgba)
-    if inf.locked:
-        _segment(a, b, _ui(LOCKED_LINE_PX), rgba)
-    else:
+    if inf.linear == "FROM_POINT":
+        # "Do ponto": thin dotted line from the reference point (RESEARCH_SKETCHUP §5.2)
         _dots(a, b, _ui(DOT_STEP_PX), max(1.0, _ui(LINE_PX)), rgba)
+        if inf.locked:
+            _segment(a, b, _ui(LOCKED_LINE_PX), rgba)
+    else:
+        # on axis / parallel / perpendicular: the line from the start point itself turns the axis colour
+        # (solid), thick when locked (Shift / arrow)
+        _segment(a, b, _ui(LOCKED_LINE_PX if inf.locked else LINE_PX), rgba)
 
 
 def draw_marker(dc, inf):

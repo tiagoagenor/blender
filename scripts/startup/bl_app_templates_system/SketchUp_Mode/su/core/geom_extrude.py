@@ -211,8 +211,10 @@ def pushpull(bm, face_ids, distance, keep_original=False, soft_ids=None, curve_m
             bnd.append({"x": x.co.copy(), "y": y.co.copy(), "kind": kind, "w_out": w_out, "curve": cid,
                         "gn": g_normal})
     verts = []
+    moved_loops = []
     for loop in [lf.outer_loop] + lf.inner_loops:
         verts += [v.co.copy() for v in loop]
+        moved_loops.append([v.co.copy() for v in loop])
     # vertex → curve ids of its two boundary edges (soft connectors between edges of one curve)
     vcurves = {}
     for b in bnd:
@@ -304,10 +306,21 @@ def pushpull(bm, face_ids, distance, keep_original=False, soft_ids=None, curve_m
             for f in faces_at(bm, s, n):
                 if f not in moved:
                     moved.append(f)
-        for f in moved:
-            geom.orient_face(f, nt)
-            f.material_index = mat
-            f[lay.back] = back
+    else:
+        # only the part that landed on the existing face is perforated; what is left of the moved face
+        # (e.g. the slab front under a door pushed through a wall on a raised floor) keeps its side
+        mloops = [[c + mv for c in loop] for loop in moved_loops]
+        mc = mloops[0][0]
+        for f in bm.faces:
+            f.normal_update()
+            if abs(abs(f.normal.dot(n)) - 1.0) > 1e-5 or abs((f.verts[0].co - mc).dot(n)) > PLANE_TOL * 10:
+                continue
+            if _inside_loops(mloops, n, _sample_point(f)):
+                moved.append(f)
+    for f in moved:
+        geom.orient_face(f, nt)
+        f.material_index = mat
+        f[lay.back] = back
     sgn = 1.0 if nt.dot(u) > 0.0 else -1.0
     sides = []
     for b in bnd:

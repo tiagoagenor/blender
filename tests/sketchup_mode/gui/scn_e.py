@@ -10,6 +10,7 @@ Parts (all by default; `shot.sh scn_e:<part>` / SU_SHOT_VARIANT=a,b runs some):
   sigame     AC-SIG-2 (moldura: topo pré-selecionado = perímetro).
   parte2     ROTEIRO_CASA Parte 2 (paredes de 15 cm, porta passante).
   promovidas Retângulo girado, Arco de três pontos, Pizza, Desenho à mão livre.
+  laje       porta passante numa parede sobre laje (piso da porta aberto, frente da laje para fora).
 Screenshots: <out_dir>/e_*.png (copied to doc/sketchup_mode/screens/ by hand, reduced with sips)."""
 
 import os
@@ -573,6 +574,10 @@ def part_parte2(h):
     blocked = [f for f in doc.bm.faces if ge.point_in_face(f, Vector((4.5, 0.0, 1.0)))
                or ge.point_in_face(f, Vector((4.5, 0.15, 1.0)))]
     h.check("B6: abertura passante (porta e parede interna somem)", blocked == [], len(blocked))
+    sill = [f for f in doc.bm.faces if ge.point_in_face(f, Vector((4.5, 0.075, 0.0)))]
+    h.log("sill faces", [(tuple(round(c, 4) for c in f.normal), [tuple(round(c, 4) for c in v.co) for v in f.verts])
+                         for f in sill])
+    h.check("B6: piso da porta aberto (base em C, sem face na soleira)", sill == [], len(sill))
     sp = _mod(h, "core.spatial")
     import importlib
     tc = _mod(h, "tools.base").tool_context()
@@ -688,8 +693,66 @@ def part_promovidas(h):
     h.check("single window (no popup)", len(bpy.context.window_manager.windows) == 1)
 
 
+def part_laje(h):
+    """Porta passante numa parede sobre laje (scn_primeiro_dia passos 5–6 / revisão do especialista): o piso
+    da porta fica aberto e a frente da laje sob a porta é uma face branca virada para fora."""
+    yield from _fresh(h, (4.0, 1.0, 1.0), 11.0)
+    yield from _box(h, 8, 6, "2,8")
+    _frame_view(h, (4.0, 3.0, 2.8), 16.0)
+    yield 0.4
+    h.glide(*h.world_xy((4.0, 0.6, 2.8)))
+    yield 0.3
+    h.key('F', unicode='f')
+    yield 0.3
+    h.glide(*h.world_xy((4.0, 0.3, 2.8)))
+    yield 0.3
+    h.click()
+    yield 0.3
+    h.glide(*h.world_xy((4.0, 1.0, 2.8)))
+    yield 0.3
+    h.type_text("0,15")
+    yield 0.6
+    yield from _pull(h, (4.0, 3.0, 2.8), (4.0, 3.0, 1.8), "2,65")
+    h.check("cômodo oco sobre laje: 11 faces", _counts(h)[2] == 11, _counts(h))
+    _frame_view(h, (4.0, 1.0, 1.0), 11.0)
+    yield 0.4
+    h.glide(*h.world_xy((4.0, 0.0, 1.0)))
+    yield 0.3
+    h.key('R', unicode='r')
+    yield 0.3
+    h.glide(*h.world_xy((4.0, 0.0, 0.0)))
+    yield 0.4
+    h.click()
+    yield 0.3
+    h.glide(*h.world_xy((4.5, 0.0, 1.0)))
+    yield 0.3
+    h.type_text("0,9;2,1")
+    yield 0.6
+    yield from _pull(h, (4.45, 0.0, 1.05), (4.45, 0.12, 1.05), "0,15")
+    doc = _mod(h, "core.document").root()
+    ge = _mod(h, "core.geom_extrude")
+    from mathutils import Vector
+
+    def at(x, y, z):
+        return [f for f in doc.bm.faces if ge.point_in_face(f, Vector((x, y, z)))]
+
+    h.check("laje: piso da porta aberto (nenhuma face na soleira)", at(4.45, 0.075, 0.0) == [], len(at(4.45, 0.075, 0.0)))
+    h.check("laje: parede perfurada acima do piso", at(4.45, 0.15, 1.0) == [] and at(4.45, 0.0, 1.0) == [])
+    step = at(4.45, 0.15, 0.075)
+    h.check("laje: frente da laje sob a porta virada para fora (−Y)", len(step) == 1 and step[0].normal.y < -0.99,
+            [tuple(f.normal) for f in step])
+    st = h.stats()
+    h.check("nenhuma face não plana", st.get("non_planar") == 0 and st.get("validate") == [], st.get("validate"))
+    _frame_view(h, (4.45, 0.5, 0.6), 4.5)
+    yield 0.4
+    yield from _settle(h)
+    h.screenshot(os.path.join(h.out_dir, "e_porta_laje.png"))
+    yield 0.2
+
+
 PARTS = [("retangulo", part_retangulo), ("casa", part_casa), ("encaixe", part_encaixe), ("linha", part_linha),
-         ("sigame", part_sigame), ("parte2", part_parte2), ("promovidas", part_promovidas)]
+         ("sigame", part_sigame), ("parte2", part_parte2), ("promovidas", part_promovidas),
+         ("laje", part_laje)]
 
 
 def run(h):

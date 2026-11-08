@@ -278,9 +278,10 @@ class TestHollowWalls(PPCase):
                     if geom_extrude.point_in_face(f, Vector((4.5, f.calc_center_median().y, 1.0)))
                     and abs(f.normal.y) > 0.99)
         self.assertAlmostEqual(ys[0], 5.85, places=4)
-        floor = [a for a in self.logical_areas()]
+        # the doorway floor is open: no face spans the bottom of the opening (the wall base becomes a "C")
+        sill = [f for f in bm.faces if geom_extrude.point_in_face(f, Vector((4.5, 0.075, 0.0)))]
+        self.assertEqual(sill, [])
         self.assertEqual(self.stats()["non_planar"], 0)
-        self.assertTrue(floor)
 
 
 if __name__ == "__main__":

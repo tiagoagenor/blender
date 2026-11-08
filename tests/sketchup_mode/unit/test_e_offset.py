@@ -44,6 +44,43 @@ class TestOffset(PPCase):
         testing.dispatch(testing.ev('MOUSEMOVE', 'NOTHING'), "su.pushpull", testing.pt(0, 0, 0))
         self.pull((0.07, 3, 0), (0.07, 3, 1), "2,8", side=-1)       # B4
         self.assertEqual(self.counts(), (16, 24, 10))
+        mid = testing.pt(4, 0, 0, kind="MIDPOINT")                  # B5: door on the outer facade
+        self.rect((4, 0, 0), face_inf((4.5, 0, 1)), "1;2,1", start=mid)
+        self.pull((4.5, 0, 1), (4.5, 0.05, 1), "0,15")              # B6: through
+        bm = document.root().bm
+        sill = [f for f in bm.faces if geom_extrude.point_in_face(f, Vector((4.5, 0.075, 0.0)))]
+        self.assertEqual(sill, [])                                  # doorway floor open, base cut into a "C"
+        hole = [f for f in bm.faces if geom_extrude.point_in_face(f, Vector((4.5, 0.15, 1.0)))
+                or geom_extrude.point_in_face(f, Vector((4.5, 0.0, 1.0)))]
+        self.assertEqual(hole, [])
+        self.assertEqual(self.stats()["non_planar"], 0)
+
+    def test_primeiro_dia_slab_door(self):
+        """PLANO §12 / scn_primeiro_dia passos 5–6: box 8×6×2,8, F 0,15 on the top, the inner face pushed
+        2,65 down (room floor at z = 0,15), door 0,9×2,1 from the bottom-edge midpoint pushed 0,15 through:
+        the doorway floor is open (bottom face cut into a notch), the wall face above the floor is perforated,
+        and the slab front under the doorway (y = 0,15, z 0..0,15) is a face looking OUT (−Y)."""
+        self.box(8, 6, "2,8")
+        self.offset((4, 0.05, 2.8), (4, 0.3, 2.8), "0,15", side=1)
+        testing.dispatch(testing.ev('MOUSEMOVE', 'NOTHING'), "su.pushpull", testing.pt(0, 0, 0))
+        self.pull((4, 3, 2.8), (4, 3, 1.8), "2,65")
+        self.assertEqual(self.counts()[2], 11)
+        mid = testing.pt(4, 0, 0, kind="MIDPOINT")
+        self.rect((4, 0, 0), face_inf((4.5, 0, 1)), "0,9;2,1", start=mid)
+        self.assertEqual(self.counts()[2], 12)
+        self.pull((4.45, 0, 1.05), (4.45, 0.12, 1.05), "0,15")
+        bm = document.root().bm
+
+        def at(x, y, z):
+            return [f for f in bm.faces if geom_extrude.point_in_face(f, Vector((x, y, z)))]
+
+        self.assertEqual(at(4.45, 0.075, 0.0), [])                 # doorway floor open
+        self.assertEqual(at(4.45, 0.15, 1.0), [])                  # perforated above the room floor
+        self.assertEqual(at(4.45, 0.0, 1.0), [])
+        step = at(4.45, 0.15, 0.075)                                # slab front under the doorway
+        self.assertEqual(len(step), 1)
+        self.assertLess(step[0].normal.y, -0.99)
+        self.assertEqual(self.stats()["non_planar"], 0)
 
     def test_ac_eqd_2_double_click(self):
         self.rect((0, 0, 0), (1, 1, 0), "2;2")

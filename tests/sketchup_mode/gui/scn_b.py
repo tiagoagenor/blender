@@ -229,4 +229,42 @@ def run(h):
     h.check("explode welds the top back: V8 A12 F6", counts() == (8, 12, 6), counts())
     h.check("validate() clean at the end", geom.validate(doc.bm) == [], geom.validate(doc.bm))
     yield from shot("b_explodir")
+
+    # --- components (P1): the whole box becomes a definition, a 2nd instance 12 m away; erasing the
+    # top inside instance 2 opens BOTH boxes (shared mesh); D's GN copy and C's ray_cast per instance
+    spatial = importlib.import_module(su.__name__ + ".core.spatial")
+    refs = selection.connected(selection.Ref(doc.key, selection.FACE, 0))
+    c1 = document.component_from(doc, [x.index for x in refs if x.kind == 'FACE'],
+                                 [x.index for x in refs if x.kind == 'EDGE'], "Caixa")
+    with ctx():
+        c1.write(undo_key=None)
+        doc.write(undo_key="undo.adjust")
+    o2 = document.duplicate(c1.obj)
+    o2.matrix_world = Matrix.Translation((12, 0, 0)) @ o2.matrix_world
+    c2 = document.get(o2)
+    with ctx():
+        bpy.ops.ed.undo_push(message="copy")
+    yield 0.3
+    h.check("component: 2 instances share the definition",
+            document.instances("Caixa") == sorted([c1.obj, o2], key=lambda o: o.name) and o2.data == c1.obj.data)
+    h.check("D's SU_Display modifier on both instances",
+            all(o.modifiers.get("SU_Display") is not None for o in (c1.obj, o2)),
+            [[m.name for m in o.modifiers] for o in (c1.obj, o2)])
+    look((10, 3, 1.5), 34)
+    yield from shot("b_componentes")
+    edit_context = importlib.import_module(su.__name__ + ".core.edit_context")
+    edit_context.enter(o2)
+    ed = document.active()
+    top2 = next(f for f in ed.bm.faces if (f.calc_center_median() - V((4, 3, 3))).length < 1e-4)
+    geom.erase_faces(ed.bm, [top2])
+    with ctx():
+        ed.write(undo_key="undo.adjust", select=())
+    edit_context.exit()
+    yield 0.3
+    h.check("edit inside instance 2 → both instances open (5 faces each)",
+            len(c1.obj.data.polygons) == 5 and len(o2.data.polygons) == 5)
+    hit = spatial.ray_cast(bpy.context, V((16, 3, 10)), V((0, 0, -1)))
+    h.check("C's ray_cast through the open top of instance 2 hits its floor",
+            hit.ok and hit.doc_key == o2.name and abs(hit.point.z) < 1e-4, (hit.ok, hit.doc_key, hit.point))
+    yield from shot("b_componentes_editados")
     h.log("screens:", shots)

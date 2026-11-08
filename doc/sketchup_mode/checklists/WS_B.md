@@ -43,3 +43,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - `add_edge`/`weld_point` não dividem mais arestas `su_bridge` (nem nos cruzamentos nem na solda das pontas): ponte não é geometria. A face lógica atravessada é dissolvida e refeita pelo `auto_faces` (pontes novas pela CDT), sem vértices soltos na aresta nova. Só arestas visíveis dividem.
 - Atravessar o **vão** de um furo passante com uma linha fecha as duas metades do vão: elas ganham face nova (regra de cura do SketchUp), e o anel se divide mantendo o material.
 - Testes `TestBridgeCrossing` (5; falham no kernel antigo): linha por face com face interna, linha pelo vão, linha só pelo anel, laço interno tipo Equidistância, ponta sobre ponte.
+
+### Componentes (P1, kernel)
+- [x] Definição = Mesh com `mesh["su_def"]` (nome); instâncias = objetos (`su_doc.kind='COMPONENT'`) que compartilham a malha, cada um com sua matriz.
+- [x] `Document` continua com chave = **nome do objeto** (contrato e os ~30 consumidores de A–G intactos; a matriz da instância é o espaço de edição), mas o **bmesh, a versão e o snapshot de pré-visualização são da MALHA** (`_MeshState`): editar por qualquer instância grava a definição uma vez; `write` emite "geometry" para **todas** as instâncias (a editada primeiro).
+- [x] API: `component_from(doc, face_ids, edge_ids, name=None)` (emite "doc"; nome único "Caixa", "Caixa#1"…), `duplicate(obj, parent=None)` (instância compartilha a malha; grupo copia), `make_unique(obj)`, `instances(definition)`, `definitions()`, `is_component(obj)`, `definition_name(obj)`; `explode(obj)` funciona em instância (solda uma cópia; a definição fica para as outras e some com a última).
+- [x] Verificado com D/C: modificador GN por objeto (cópia de verso nas duas instâncias), arestas de D em cache por malha e desenhadas com o `matrix_world` de cada instância, `spatial.ray_cast` de C acerta a instância certa (scn_b).
+- [ ] **F**: `geom_transform.duplicate_object` e a área de transferência copiam a malha (`new.data = obj.data.copy()`). Para cópia de instância (Mover+Option, Colar) usar `document.duplicate(obj, parent)`.
+- Testes: `test_b_components.py` (9) + seção de componentes no `scn_b` (46 verificações; prints `b_componentes*.png`).

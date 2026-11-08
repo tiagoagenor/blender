@@ -35,7 +35,7 @@ class SU_PG_style(bpy.types.PropertyGroup):
     show_guides: BoolProperty(name="Guias", default=True, update=_on_change)
     show_hidden_geometry: BoolProperty(name="Geometria oculta", default=False, update=_on_change)
     show_edges: BoolProperty(name="Arestas", default=True, update=_on_change)
-    show_profiles: BoolProperty(name="Perfis", default=True, update=_on_change)
+    show_profiles: BoolProperty(name="Perfis", default=False, update=_on_change)   # off in Simple Style
     show_back_edges: BoolProperty(name="Arestas traseiras", default=False, update=_on_change)
     face_style: EnumProperty(name="Estilo de face", items=FACE_STYLES, default='TEXTURED', update=_on_change)
 

@@ -394,6 +394,25 @@ def run(h):
     st.face_style = 'TEXTURED'
     st.show_back_edges = False
     h.check("back copy on again", sc["box"].modifiers["SU_Display"].show_viewport)
+    # ---- 5b. Perfis (OFF in the Simple Style): ON thickens object outlines; smooth silhouettes always drawn
+    st = bpy.context.scene.su_style
+    h.check("Perfis off by default (Simple Style)", st.show_profiles is False, st.show_profiles)
+
+    def dark_run(img, xy, r=10):
+        return sum(1 for dx in range(-r, r + 1) if (q := img.at(xy[0] + dx, xy[1])) is not None and max(q) < 80)
+    outline_xy = wxy((2.0, 3.0, 0.75))               # right vertical edge of the box = outline
+    off = dark_run(shot, outline_xy)
+    st.show_profiles = True
+    yield 1.0
+    path7 = os.path.join(h.out_dir, "scn_d_profiles.png")
+    h.screenshot(path7)
+    yield 0.5
+    on = dark_run(Shot(path7), outline_xy)
+    probes["outline width px (Perfis off/on)"] = (off, on)
+    h.check("Perfis on: outline thicker", on > off >= 1, (off, on))
+    st.show_profiles = False
+    yield 0.3
+
     # ---- 6. scene tabs (G, P1): toolbar moves to the HEADER, tabs in the TOOL_HEADER; back without scenes
     if "su.scene_add" in dir(bpy.ops.su) or hasattr(bpy.types, "SU_OT_scene_add"):
         ov = dict(window=h.window(), area=area, region=R['WINDOW'])

@@ -7,7 +7,7 @@
     su.select_all / su.select_none / su.select_invert     Cmd+A, Shift+Cmd+A, Shift+Cmd+I
     su.escape            Esc when idle: clears the selection; with nothing selected leaves the open group
     su.close_group       Fechar grupo/componente
-    su.make_group / su.make_component (G; = Criar grupo until P1)   su.explode   su.reverse_faces
+    su.make_group / su.make_component (G: component "Componente#N")   su.make_unique   su.explode   su.reverse_faces
     su.hide / su.unhide_all / su.unhide_last / su.unhide_selected   su.edit_group   su.entity_info
     su.copy / su.cut / su.paste / su.paste_in_place (P1; Cmd+C/X/V; Colar = no local + Mover)
     su.intersect_faces(mode='MODEL'|'SELECTION') (P1; original meshes, edges in the edited document)
@@ -37,8 +37,8 @@ STRINGS = {
     "edit.undo_reverse": {"pt_BR": "Inverter faces", "en": "Reverse Faces"},
     "edit.undo_hide": {"pt_BR": "Ocultar", "en": "Hide"},
     "edit.undo_unhide": {"pt_BR": "Reexibir", "en": "Unhide"},
-    "edit.component_is_group": {"pt_BR": "Componentes ainda não disponíveis: grupo criado.",
-                                "en": "Components are not available yet: group created."},
+    "edit.undo_make_component": {"pt_BR": "Criar componente", "en": "Make Component"},
+    "edit.undo_make_unique": {"pt_BR": "Tornar exclusivo", "en": "Make Unique"},
     "tool.su.make_component.label": {"pt_BR": "Criar componente", "en": "Make Component"},
     "edit.undo_paste": {"pt_BR": "Colar", "en": "Paste"},
     "edit.undo_cut": {"pt_BR": "Recortar", "en": "Cut"},
@@ -472,13 +472,41 @@ def unhide(which="ALL", undo_key="edit.undo_unhide"):
     return True
 
 
-def make_component():
-    """Criar componente = Criar grupo until components (P1), with the hint."""
-    if make_group("edit.undo_make_group") is not None:
-        from ..core.state import STATE
-        STATE.set_hint("edit.component_is_group")
-        return True
-    return False
+def make_component(name=None, undo_key="edit.undo_make_component"):
+    """Criar componente (G): the selected geometry of the edited document becomes the first instance
+    of a new component definition (default name "Componente#N", no dialog); selected groups/instances
+    nest inside it. With only groups/instances selected, they are wrapped in a new group (a component
+    needs geometry). The new instance becomes the selection. Returns its Document or None."""
+    from ..core import document, selection
+    doc, faces, edges, objs = _split_selection()
+    if not faces and not edges:
+        return make_group(undo_key) if objs else None
+    mws = {o.name: o.matrix_world.copy() for o in objs}
+    c = document.component_from(doc, faces, edges, name)
+    for o in objs:
+        o.parent = c.obj
+        o.matrix_world = mws[o.name]
+    commit([c, doc], undo_key, select=[selection.Ref(c.key, selection.OBJECT, 0)])
+    return c
+
+
+def make_unique_selection(undo_key="edit.undo_make_unique"):
+    """Tornar exclusivo: every selected component instance gets its own copy of the definition."""
+    from ..core import document, selection
+    objs = [o for o in selection.objects() if document.is_component(o) and o.data.users > 1]
+    if not objs:
+        return False
+    for o in objs:
+        document.make_unique(o)
+    commit([], undo_key, select=selection.get())
+    return True
+
+
+def _has_shared_instance():
+    sel = _core("selection")
+    document = _core("document")
+    return sel is not None and document is not None and hasattr(document, "is_component") and any(
+        document.is_component(o) and o.data.users > 1 for o in sel.objects())
 
 
 def _redraw():
@@ -522,7 +550,9 @@ def _simple_op(idname, label, fn, poll=None, desc=""):
 
 SU_OT_make_group = _simple_op("su.make_group", "Criar grupo", make_group, _has_sel)
 SU_OT_make_component = _simple_op("su.make_component", "Criar componente", make_component, _has_sel,
-                                  "Criar componente (por enquanto cria um grupo)")
+                                  "Criar componente com a seleção")
+SU_OT_make_unique = _simple_op("su.make_unique", "Tornar exclusivo", make_unique_selection, _has_shared_instance,
+                               "Dar a esta instância uma definição própria")
 SU_OT_explode = _simple_op("su.explode", "Explodir", explode_selection, _has_objects)
 SU_OT_reverse_faces = _simple_op("su.reverse_faces", "Inverter faces", reverse_selected_faces, _has_faces)
 SU_OT_hide = _simple_op("su.hide", "Ocultar", hide_selection, _has_sel)
@@ -567,39 +597,29 @@ class SU_OT_entity_info(bpy.types.Operator):
         return {'FINISHED'}
 
 
-# Criar componente (LTS button + G): a COMMAND tool. A click on it in the Large Tool Set makes it the
-# workspace tool for a moment: activate() runs the command and goes back to the previous tool.
-_prev_tool = [""]
-
-
-def _on_tool(old="", new="", **_kw):
-    if new and new != "su.make_component":
-        _prev_tool[0] = new
-
-
+# Criar componente (LTS button + G): a COMMAND meta; the platform runs `su.make_component` (keyboard via
+# su.tool_activate, LTS click via the dispatcher's COMMAND handling) and goes back to the previous tool.
 @tool(ToolMeta(id="su.make_component", label_key="tool.su.make_component.label",
                icon="ops.mesh.primitive_cube_add_gizmo", kind='COMMAND', operator="su.make_component",
                shortcut="G"))
 class MakeComponentCommand(BaseTool):
-    def activate(self, tc):
-        back = _prev_tool[0] or "su.select"
-        try:
-            make_component()
-        finally:
-            if not bpy.app.background:
-                registry.deferred(lambda: base.set_workspace_tool(back), 0.0)
+    pass
 
 
 # ---------------------------------------------------------------------------------------------- clipboard (P1)
 
-_CLIP = {"geo": None, "objects": []}     # geometry in WORLD space + detached object copies
+_CLIP = {"geo": None, "objects": [], "instances": []}
+# geo: geometry in WORLD space; objects: names of detached group copies; instances: component instances
+# as (definition mesh name, object name, world matrix) — no detached object, so the stored copy is never
+# counted as an instance of the definition.
 
 
 def _store_object(obj):
     """Detached deep copy of a group (not linked to any scene; children too)."""
+    from ..core import document
     new = obj.copy()
-    if obj.data is not None:
-        new.data = obj.data.copy()
+    if obj.data is not None and not document.is_component(obj):
+        new.data = obj.data.copy()          # a component instance keeps sharing its definition
     new.use_fake_user = True
     kids = [_store_object(c) for c in obj.children]
     for k in kids:
@@ -664,12 +684,15 @@ def copy_selection():
             geo["faces"].append(([v_of(doc, v) for v in f.verts], fm, bmat, bool(f.smooth)))
     _free_clip_objects()
     _CLIP["geo"] = geo if geo["verts"] else None
-    _CLIP["objects"] = [_store_object(o).name for o in selection.objects()]
-    return bool(_CLIP["geo"] or _CLIP["objects"])
+    objs = selection.objects()
+    _CLIP["instances"] = [(o.data.name, o.name, o.matrix_world.copy()) for o in objs if document.is_component(o)]
+    _CLIP["objects"] = [_store_object(o).name for o in objs if not document.is_component(o)]
+    return bool(_CLIP["geo"] or _CLIP["objects"] or _CLIP["instances"])
 
 
 def has_clipboard():
-    return bool(_CLIP["geo"] or _clip_objects())
+    return bool(_CLIP["geo"] or _clip_objects() or
+                [1 for d, _n, _m in _CLIP["instances"] if bpy.data.meshes.get(d) is not None])
 
 
 def paste_in_place(undo_key="edit.undo_paste"):
@@ -712,14 +735,27 @@ def paste_in_place(undo_key="edit.undo_paste"):
         tmp.parent = parent
         tmp.matrix_world = mw
         refs.append(selection.Ref(tmp.name, selection.OBJECT, 0))
+    from .. import events
+    for defname, name, mw in _CLIP["instances"]:
+        me = bpy.data.meshes.get(defname)
+        if me is None:
+            continue
+        inst = bpy.data.objects.new(name, me)
+        inst.su_doc.kind = document.KIND_COMPONENT
+        coll.objects.link(inst)
+        inst.parent = parent
+        inst.matrix_world = mw
+        events.emit("doc", doc_key=inst.name)
+        refs.append(selection.Ref(inst.name, selection.OBJECT, 0))
     commit(changed, undo_key, select=refs)
     return True
 
 
 def _link_copy(obj, coll):
     from .. import events
+    from ..core import document
     new = obj.copy()
-    if obj.data is not None:
+    if obj.data is not None and not document.is_component(obj):
         new.data = obj.data.copy()
     new.use_fake_user = False
     coll.objects.link(new)
@@ -893,7 +929,7 @@ class SU_OT_intersect_faces(bpy.types.Operator):
 _classes = (SU_OT_delete_selected, SU_OT_select_all, SU_OT_select_none, SU_OT_select_invert, SU_OT_escape,
             SU_OT_close_group, SU_OT_make_group, SU_OT_make_component, SU_OT_explode, SU_OT_reverse_faces,
             SU_OT_hide, SU_OT_unhide_all, SU_OT_unhide_last, SU_OT_unhide_selected, SU_OT_edit_group,
-            SU_OT_entity_info, SU_OT_copy, SU_OT_cut, SU_OT_paste, SU_OT_paste_in_place,
+            SU_OT_entity_info, SU_OT_make_unique, SU_OT_copy, SU_OT_cut, SU_OT_paste, SU_OT_paste_in_place,
             SU_OT_intersect_faces)
 
 # Window keymap items (keymap.finalize adds them after su.vcb_key and the tool shortcuts).
@@ -913,13 +949,9 @@ KEYMAP = [
 def register():
     i18n.register_strings(STRINGS)
     registry.register_classes(_classes)
-    from .. import events
-    events.subscribe("tool", _on_tool)
 
 
 def unregister():
     _free_clip_objects()
-    from .. import events
-    events.unsubscribe("tool", _on_tool)
     registry.unregister_classes(_classes)
     i18n.unregister_strings(STRINGS)

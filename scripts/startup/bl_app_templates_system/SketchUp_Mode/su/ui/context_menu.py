@@ -29,6 +29,8 @@ STRINGS = {
     "edit.ctx.reverse_faces": {"pt_BR": "Inverter faces", "en": "Reverse Faces"},
     "edit.ctx.explode": {"pt_BR": "Explodir", "en": "Explode"},
     "edit.ctx.edit_group": {"pt_BR": "Editar grupo", "en": "Edit Group"},
+    "edit.ctx.edit_component": {"pt_BR": "Editar componente", "en": "Edit Component"},
+    "edit.ctx.make_unique": {"pt_BR": "Tornar exclusivo", "en": "Make Unique"},
     "edit.ctx.close_group": {"pt_BR": "Fechar grupo", "en": "Close Group"},
     "edit.ctx.zoom_selection": {"pt_BR": "Zoom na seleção", "en": "Zoom Selection"},
     "edit.ctx.unhide_all": {"pt_BR": "Reexibir tudo", "en": "Unhide All"},
@@ -45,6 +47,7 @@ ITEMS = (
     ("edit.ctx.make_group", "su.make_group"),
     ("edit.ctx.reverse_faces", "su.reverse_faces"),
     ("edit.ctx.explode", "su.explode"),
+    ("edit.ctx.make_unique", "su.make_unique"),
     ("edit.ctx.edit_group", "su.edit_group"),
     ("edit.ctx.close_group", "su.close_group"),
     None,
@@ -68,6 +71,14 @@ def _op_exists(idname):
         return False
 
 
+def _selected_component():
+    sel, document = registry.optional("core.selection"), registry.optional("core.document")
+    if sel is None or document is None or not hasattr(document, "is_component"):
+        return False
+    objs = sel.objects()
+    return len(objs) == 1 and document.is_component(objs[0])
+
+
 def _draw_items(layout, items):
     for it in items:
         if it is None:
@@ -75,7 +86,10 @@ def _draw_items(layout, items):
         elif it[0] == "menu":
             layout.menu(it[2], text=i18n.t(it[1]))
         elif _op_exists(it[1]):
-            layout.operator(it[1], text=i18n.t(it[0]))
+            key = it[0]
+            if it[1] == "su.edit_group" and _selected_component():
+                key = "edit.ctx.edit_component"
+            layout.operator(it[1], text=i18n.t(key))
 
 
 class SU_MT_context(bpy.types.Menu):

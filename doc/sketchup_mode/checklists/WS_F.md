@@ -11,7 +11,7 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 6. [x] Girar (transferidor no hover) e Escala (alças, `-1`)
 7. [x] comandos: Excluir, tudo/nada/inverter, Criar/Fechar grupo, Inverter faces, Ocultar/Reexibir, Explodir; G/Criar componente = Criar grupo
 8. [x] menu de contexto; Informações da entidade
-9. [~] P1: Virar, Componentes, clipboard, Interseccionar (sobre `obj.data`)
+9. [x] P1: Virar, Componentes, clipboard, Interseccionar (sobre `obj.data`)
 
 ## Aceite e comandos (referência)
 - **Aceite**: AC-SEL-1..5, AC-APG-1..4, AC-PNT-1..4, AC-MOV-1..10, AC-GIR-1..3, AC-ESC-1..4.
@@ -63,3 +63,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - Reexibir ▸ Tudo / Último / Selecionados restauram (o atributo volta a False); 1 undo.
 - **Pendente (D)**: deixar de desenhar as faces com `su_hidden_face` no GN "SU_Display" sem mudar o nº/ordem das faces (C usa `idx % n_orig`): Named Attribute `su_hidden_face` → Split Edges (seleção) → Scale Elements escala 0 (seleção) no ramo original **antes** do Join/Flip; com `show_hidden_geometry` ligado, não colapsar (opcional: malha/translúcido). **Opcional (B)**: copiar `su_hidden_face` nas faces recriadas pelo kernel (CDT/merge) — hoje uma face recriada volta visível.
 - Testes: `test_f_hidden.py`; GUI `scn_f` passo 13. Print `screens/f_ocultar_face.png` (o topo ainda aparece até D colapsar no GN; o clique já atravessa e seleciona a base).
+
+### Bloco 7 — Componentes (P1, sobre o kernel de B com malha compartilhada)
+- **G / `su.make_component`** = componente de verdade (`document.component_from`; nome padrão "Componente#N", sem diálogo); grupos/instâncias selecionados aninham na instância; só objetos selecionados → Criar grupo. A dica "Componentes ainda não disponíveis" saiu. A COMMAND `su.make_component` ficou só como meta (A executa o operador no LTS e volta à ferramenta anterior).
+- Cópias compartilham a definição: `geom_transform.duplicate_object` → `document.duplicate` (Mover+Option, `Nx`, `/N`, Girar cópia, Virar cópia); clipboard guarda instâncias como (definição, nome, matriz) — sem objeto destacado contando como instância — e Colar cria instâncias da mesma malha.
+- `su.make_unique` (Tornar exclusivo) no menu de contexto; "Editar componente" quando a seleção é uma instância; Explodir funciona em instâncias (B).
+- Informações da entidade: Componente · Definição · Instância (nome editável) · "N instâncias no modelo".
+- Bandeja › **Componentes** (`ui/tray_components.py`, seção 30): definições em uso com contagem; clique → `su.place_component` (operador modal: a instância segue o ponto inferido pelo canto mais baixo da caixa, clique insere com 1 undo e seleciona, Esc/botão direito cancela) usando `tools/move.ComponentPlacer`.
+- Testes: `test_f_components.py`; GUI `scn_f` passo 14 (G → componente, Mover+Option compartilha, Bandeja → inserir: 3 instâncias). Print `screens/f_componentes.png`.

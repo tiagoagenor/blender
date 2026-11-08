@@ -19,8 +19,8 @@ picks single vertices (Move on an endpoint with nothing selected).
 fold: 'AUTO' (vertex/edge moves: faces that become non-planar are folded with visible edges,
 geom.ensure_planar), 'RESTRICT' (face moves: a matrix that would leave a face non-planar is rejected;
 shear that keeps faces planar is accepted), 'FREE' (P1).
-Copies: geometry is duplicated inside the same document (not welded); groups are duplicated
-(object + mesh, children too) and announced with events.emit("doc").
+Copies: geometry is duplicated inside the same document (not welded); groups and component instances
+are duplicated with document.duplicate (instances share their definition mesh).
 """
 
 import bmesh
@@ -51,19 +51,9 @@ def _top_objects(objs):
 
 
 def duplicate_object(obj, parent=None):
-    """Deep copy of a group object (mesh copied, children too). Emits "doc" for each new document."""
-    new = obj.copy()
-    if obj.data is not None:
-        new.data = obj.data.copy()
-    for coll in obj.users_collection:
-        coll.objects.link(new)
-    if parent is not None:
-        new.parent = parent
-        new.matrix_parent_inverse = obj.matrix_parent_inverse.copy()
-    events.emit("doc", doc_key=new.name)
-    for child in list(obj.children):
-        duplicate_object(child, new)
-    return new
+    """Copy of a group / component instance (B's document.duplicate: an instance SHARES its definition,
+    a group gets its own mesh copy; children too; "doc" emitted for each new object)."""
+    return document.duplicate(obj, parent)
 
 
 def _copy_geometry(bm, faces, edges):

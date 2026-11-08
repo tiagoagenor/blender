@@ -284,5 +284,96 @@ class MoveTool(BaseTool):
                 prims.points(dc, pts, blue, 6)
 
 
+# ---------------------------------------------------------------------------------------------- place component
+# Componentes (Bandeja) → click a definition → `su.place_component` (ui/tray_components, a modal
+# operator: the LTS has no slot for a placing tool) drives a ComponentPlacer: a new instance follows the
+# cursor (its lowest bounding-box corner on the inferred point), a click places it (1 undo, selection =
+# the new instance); Esc / right click removes the preview instance.
+
+def _end_place():
+    from ..core.state import Inference
+    STATE.inference = Inference.none()          # no stale marker/ScreenTip from the placement
+    from .base import DISPATCH, controller
+    ctrl = controller(DISPATCH.tool_id) if DISPATCH.tool_id else None
+    if ctrl is not None:
+        ctrl.update_status()                    # the active tool's hint again
+    else:
+        STATE.set_hint("")
+    STATE.redraw_viewport()
+
+
+class ComponentPlacer:
+    def __init__(self, definition_name):
+        self.definition = definition_name
+        self.obj_name = ""
+        self.offset = Vector()
+
+    def obj(self):
+        return bpy.data.objects.get(self.obj_name) if self.obj_name else None
+
+    def start(self):
+        """Create the (hidden) preview instance. False when the definition does not exist."""
+        from .. import events
+        from ..core import document, edit_context
+        me = bpy.data.meshes.get(self.definition)
+        if me is None or "su_def" not in me:
+            return False
+        obj = bpy.data.objects.new(me["su_def"], me)
+        obj.su_doc.kind = document.KIND_COMPONENT
+        cur = edit_context.current_object()
+        coll = cur.users_collection[0] if cur is not None and cur.users_collection else bpy.context.scene.collection
+        coll.objects.link(obj)
+        if cur is not None:
+            obj.parent = cur
+        obj.hide_set(True)                  # shown at the first move
+        events.emit("doc", doc_key=obj.name)
+        self.obj_name = obj.name
+        cos = [v.co for v in me.vertices]
+        self.offset = Vector((min(c.x for c in cos), min(c.y for c in cos), min(c.z for c in cos))) if cos else Vector()
+        STATE.set_hint("tool.su.place_component.hint", name=self.definition)
+        return True
+
+    def exclude(self):
+        return frozenset({self.obj_name}) if self.obj_name else frozenset()
+
+    def follow(self, inf):
+        obj = self.obj()
+        if obj is None or inf is None or inf.kind == "NONE":
+            return None
+        if obj.hide_get():
+            obj.hide_set(False)
+        obj.matrix_world = Matrix.Translation(Vector(inf.point) - self.offset)
+        return obj
+
+    def place(self, inf=None):
+        """Place at `inf` (or where it is). Returns the new instance's name, or ''."""
+        obj = self.follow(inf) if inf is not None else self.obj()
+        if obj is None or obj.hide_get():
+            return ''
+        from ..core import selection
+        from ..ops import edit_ops
+        name = obj.name
+        self.obj_name = ""
+        edit_ops.commit([], "tool.su.place_component.undo", select=[selection.Ref(name, selection.OBJECT, 0)])
+        _end_place()
+        return name
+
+    def cancel(self):
+        obj = self.obj()
+        if obj is not None:
+            bpy.data.objects.remove(obj)
+        self.obj_name = ""
+        _end_place()
+
+
+STRINGS_PLACE = {
+    "tool.su.place_component.label": {"pt_BR": "Inserir componente", "en": "Place Component"},
+    "tool.su.place_component.hint": {"pt_BR": "Clique para inserir «{name}». Esc = cancelar.",
+                                     "en": "Click to place «{name}». Esc = cancel."},
+    "tool.su.place_component.undo": {"pt_BR": "Inserir componente", "en": "Place Component"},
+}
+
+
 def register():
     i18n.register_strings(STRINGS)
+    i18n.register_strings(STRINGS_PLACE)

@@ -9,9 +9,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 4. [x] Pintura (lado por `Hit.side`, seleção, superfície, conta-gotas) + seção Materiais
 5. [x] `TransformSession` (AUTO/RESTRICT, cópia, arrays, index_map) + Mover
 6. [x] Girar (transferidor no hover) e Escala (alças, `-1`)
-7. [~] comandos: Excluir, tudo/nada/inverter, Criar/Fechar grupo, Inverter faces, Ocultar/Reexibir, Explodir; G/Criar componente = Criar grupo
-8. [ ] menu de contexto; Informações da entidade
-9. [ ] P1: Virar, Componentes, clipboard, Interseccionar (sobre `obj.data`)
+7. [x] comandos: Excluir, tudo/nada/inverter, Criar/Fechar grupo, Inverter faces, Ocultar/Reexibir, Explodir; G/Criar componente = Criar grupo
+8. [x] menu de contexto; Informações da entidade
+9. [~] P1: Virar, Componentes, clipboard, Interseccionar (sobre `obj.data`)
 
 ## Aceite e comandos (referência)
 - **Aceite**: AC-SEL-1..5, AC-APG-1..4, AC-PNT-1..4, AC-MOV-1..10, AC-GIR-1..3, AC-ESC-1..4.
@@ -41,3 +41,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - Travas de seta/Shift são limpas ao concluir (A pode querer fazer isso no despacho).
 - Testes: `test_f_move.py` (AC-MOV-1,2,3,5..10 + RESTRICT), `test_f_rotate.py` (AC-GIR-1..3, 15°), `test_f_scale.py` (AC-ESC-1..4, alça de aresta). GUI `scn_f` passos 7–10: cumeeira da casa (realce no hover, ↑, `2` → 2 águas + 2 oitões pentagonais, 7 faces planas, 1 undo), cópia com Option + `2x` (3 casas, seleção = última), Girar `90` em torno do canto, Escala `2` na alça do canto.
 - AC-MOV-4 (encaixe extremidade-extremidade) depende da inferência de C com `exclude` — coberto pela exclusão dos vértices em movimento; sem teste GUI dedicado ainda.
+
+### Bloco 4 — Comandos, menu de contexto, Informações da entidade, P1
+- `ops/edit_ops.py`: `su.make_group` (geometria do contexto → grupo; grupos selecionados aninham; seleção = grupo), `su.make_component` (= Criar grupo até o P1, dica "Componentes ainda não disponíveis: grupo criado."), ferramenta COMMAND `su.make_component` com atalho **G** (clique no LTS executa e volta à ferramenta anterior), `su.explode` (geometria + filhos viram a seleção), `su.reverse_faces`, `su.hide` (grupos: `hide_set`; arestas: `su_hidden`; faces = P1), `su.unhide_all/last/selected`, `su.edit_group`, `su.entity_info` (abre a seção na Bandeja), `su.close_group`. Todos com 1 undo pela `commit()`.
+- `ui/context_menu.py`: `SU_MT_context` (Informações da entidade, Excluir, Ocultar, Reexibir tudo, Selecionar ▸ [Tudo, Nada, Inverter, Tudo conectado], Criar grupo, Inverter faces, Explodir, Editar grupo, Fechar grupo, Zoom na seleção) + `select_under(context, xy)` (A chama no `su.context_menu`: botão direito / Ctrl+clique seleciona a entidade sob o cursor antes do menu); `su.select_connected`, `su.zoom_selection` (usa `camera.zoom_extents(selection_only=True)` de G quando existe).
+- `ui/tray_entity_info.py` (seção 10): Face/Superfície (área, materiais frente/verso), Aresta/Curva (comprimento, segmentos), Grupo (nome editável), várias → "N entidades" + contagens + área total.
+- P1: `tools/flip.py` (Virar: 3 planos pelo centro da caixa, clique vira, Option = cópia espelhada, normais para fora); clipboard `su.copy/cut/paste/paste_in_place` (Cmd+C/X/V; Colar = no local e ativa Mover); `core/geom_transform.mirror` com faces invertidas.
+- Testes: `test_f_commands.py`, `test_f_flip.py`, `test_f_clipboard.py`; GUI `scn_f` passo 11 (triplo clique → G → grupo + dica; botão direito → menu; duplo clique entra / Esc sai; Ocultar/Reexibir; Explodir).
+- Pendente P1: Componentes (definições compartilhadas — depende de B: `Document` com malha compartilhada), Interseccionar faces (pronto em WIP, entra no próximo bloco), faces ocultas.

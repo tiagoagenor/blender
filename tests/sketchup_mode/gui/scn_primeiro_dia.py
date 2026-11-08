@@ -760,7 +760,7 @@ def run(h):
         yield 0.3
         clicks()
         yield 0.3
-        go((4.0, -1.0, 3.4))
+        go((4.0, -3.0, 0.0))                       # pull the dimension out in front, over empty ground
         yield 0.3
         clicks()
         yield 0.5
@@ -788,7 +788,8 @@ def run(h):
                   for dx in range(-40, 41, 2) for dy in range(-14, 15, 2)]
             light = sum(1 for c in px if min(c) >= 235)
             dark = sum(1 for c in px if max(c) <= 90)
-            return light > 20 and dark > 3, {"claros": light, "escuros": dark, "desenhadas": annotations.last_drawn()}
+            return light > 20 and dark > 3, {"claros": light, "escuros": dark, "desenhadas": annotations.last_drawn(),
+                                             "offset": tuple(round(c, 3) for c in dm.offset), "meio_px": tuple(mid)}
         h.park_mouse()
         yield 0.5
         ok1, info1 = text_visible("antes")

@@ -207,7 +207,7 @@ def doc_stats(doc_key=None):
     soft = lay.get("su_soft") if lay is not None else None
     faces = list(bm.faces)
     pts = [mw @ v.co for v in bm.verts]
-    lfaces, surfaces = None, None
+    lfaces, surfaces = (None, None) if faces else (0, 0)
     ent = registry.optional("core.entities")
     if ent is not None and faces:
         try:

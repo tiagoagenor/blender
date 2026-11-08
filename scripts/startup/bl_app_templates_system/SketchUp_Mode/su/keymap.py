@@ -37,6 +37,13 @@ VCB_ITEMS = (
 # Window shortcuts of commands that are not tools (PLANO §5.3), added only when the operator exists.
 EXTRA_ITEMS = (
     ("su.style_toggle", {"type": 'K', "value": 'PRESS'}, {"properties": [("prop", "show_back_edges")]}),  # Arestas traseiras
+    # Mac mouse (PLANO §5.2): Ctrl+click / idle right click = context menu (F's menu, via A's su.context_menu);
+    # Ctrl+Cmd(+Option) drag = orbit, +Shift = pan (G's operators; pivot = depth under the PRESS point).
+    ("su.context_menu", {"type": 'LEFTMOUSE', "value": 'CLICK', "ctrl": True}, None),
+    ("su.context_menu", {"type": 'RIGHTMOUSE', "value": 'PRESS'}, None),
+    ("su.view_orbit", {"type": 'LEFTMOUSE', "value": 'CLICK_DRAG', "ctrl": True, "oskey": True}, None),
+    ("su.view_orbit", {"type": 'LEFTMOUSE', "value": 'CLICK_DRAG', "ctrl": True, "oskey": True, "alt": True}, None),
+    ("su.view_pan", {"type": 'LEFTMOUSE', "value": 'CLICK_DRAG', "ctrl": True, "oskey": True, "shift": True}, None),
 )
 
 

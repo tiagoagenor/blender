@@ -1,0 +1,17 @@
+{
+ "_doc": "Color probes (PLANO §8.3, R3 §3.2). sRGB 0-255 targets from colors.py / RESEARCH_SKETCHUP §4.2; tolerance per channel. Used by tests/sketchup_mode/gui/scn_sondas.py. 'pending' = needs a tool not merged yet.",
+ "tolerance": 12,
+ "probes": {
+  "sky_top":        {"rgb": [30, 166, 221],  "tol": 20, "where": "viewport, 3% below the top edge (depends on pitch)"},
+  "horizon":        {"rgb": [191, 229, 245], "where": "viewport, just above the horizon line"},
+  "ground":         {"rgb": [191, 191, 198], "where": "viewport, lower left empty ground"},
+  "chrome_topbar":  {"rgb": [241, 241, 246], "where": "top bar, right half"},
+  "statusbar":      {"rgb": [241, 241, 246], "where": "status bar, middle"},
+  "tray_body":      {"rgb": [244, 247, 252], "where": "tray region, below the sections"},
+  "face_back":      {"rgb": [164, 178, 187], "where": "centre of a ground rectangle drawn with Linha (back side up)"},
+  "edge":           {"rgb": [0, 0, 0], "tol": 60, "where": "on a drawn edge (1 pt, anti-aliased)"},
+  "face_front_box": {"rgb": [255, 255, 255], "pending": "su.pushpull", "where": "front face of the default box"},
+  "face_side_box":  {"rgb": [210, 210, 210], "pending": "su.pushpull", "where": "side face of the default box"},
+  "face_top_box":   {"rgb": [160, 160, 160], "pending": "su.pushpull", "where": "top face seen from above"}
+ }
+}

@@ -257,6 +257,13 @@ class TestKeymapData(unittest.TestCase):
         k = [it for it in items if it[1]["type"] == 'K']
         self.assertEqual([it[0] for it in k], ["su.style_toggle"])
 
+    def test_tool_keymap_accepts_modifiers(self):
+        meta = base.ToolMeta(id="su.x", label_key="tool.su.x.label", icon="")
+        items = base.tool_keymap(meta)
+        self.assertEqual([(it[1]["type"], it[1]["value"]) for it in items],
+                         [('LEFTMOUSE', 'PRESS'), ('LEFTMOUSE', 'RELEASE'), ('MOUSEMOVE', 'ANY')])
+        self.assertTrue(all(it[1].get("any") for it in items))
+
     def test_allow_list(self):
         data = {name: content for name, _args, content in keymap.keyconfig_data()}
         ids = {it[0] for name in keymap.FILTERED if name in data for it in data[name]["items"]}

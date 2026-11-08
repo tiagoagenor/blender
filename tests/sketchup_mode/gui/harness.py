@@ -132,6 +132,31 @@ class Harness:
         p = view3d_utils.location_3d_to_region_2d(r, rv3d, co)
         return r.x + int(round(p.x)), r.y + int(round(p.y))
 
+    # ------------------------------------------------------------------ colour probes
+    def load_png(self, path):
+        """(width, height, numpy float array [h, w, 4]) of a PNG (rows bottom-up, like window y)."""
+        import numpy as np
+        img = bpy.data.images.load(path, check_existing=False)
+        w, h = img.size
+        px = np.empty(w * h * 4, dtype=np.float32)
+        img.pixels.foreach_get(px)
+        bpy.data.images.remove(img)
+        return w, h, px.reshape(h, w, 4)
+
+    def probe(self, shot, x, y, r=2):
+        """Mean sRGB 0–255 around window pixel (x, y) of a screenshot loaded with load_png."""
+        w, h, px = shot
+        win = self.window()
+        sx, sy = w / max(1, win.width * bpy.context.preferences.system.pixel_size), \
+            h / max(1, win.height * bpy.context.preferences.system.pixel_size)
+        cx, cy = int(x * sx), int(y * sy)
+        patch = px[max(0, cy - r):cy + r + 1, max(0, cx - r):cx + r + 1, :3]
+        return [int(round(float(c) * 255)) for c in patch.reshape(-1, 3).mean(axis=0)]
+
+    @staticmethod
+    def color_close(got, want, tol):
+        return got is not None and all(abs(a - b) <= tol for a, b in zip(got, want))
+
     # ------------------------------------------------------------------ su hooks
     @property
     def testing(self):
@@ -229,8 +254,9 @@ class Harness:
     def start(self, scenario_run):
         self._gen = self._program(scenario_run)
         self._waiting = None
-        bpy.app.timers.register(self._tick, first_interval=1.0)
-        bpy.app.timers.register(self._watchdog, first_interval=SCENARIO_TIMEOUT_S)
+        # persistent: scenarios may load files / switch app templates (S-E)
+        bpy.app.timers.register(self._tick, first_interval=1.0, persistent=True)
+        bpy.app.timers.register(self._watchdog, first_interval=SCENARIO_TIMEOUT_S, persistent=True)
 
     def _tick(self):
         if self.done:

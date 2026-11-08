@@ -167,6 +167,30 @@ class TestEdges(unittest.TestCase):
             bpy.data.meshes.remove(me)
 
 
+try:
+    from test_e_shapes import ShapeCase as _ShapeCase
+except Exception:          # E not merged: skip the real-cylinder test
+    _ShapeCase = None
+
+
+if _ShapeCase is not None:
+    class TestEdgesRealCylinder(_ShapeCase):
+        """Cylinder built by E's Círculo + Empurrar/puxar: soft sides only as profile edges."""
+
+        def test_silhouette_of_real_cylinder(self):
+            from su import testing
+            from su.core import document
+            edges = importlib.import_module("su.draw.edges")
+            self.shape("su.circle", (0, 0, 0), (1, 0, 0), "1", sides="24")
+            testing.dispatch(testing.ev('MOUSEMOVE', 'NOTHING'), "su.pushpull", testing.pt(0, 0, 0))
+            self.pull((0.1, 0.1, 0), (0.1, 0.1, 0.5), "2", side=-1)
+            me = document.root().obj.data
+            d = edges.edge_classes(me)
+            self.assertEqual(int(d["profile"].sum()), 24, "24 soft side edges are profile candidates")
+            sil = edges.silhouette_mask(d, (10.0, 3.0, 1.0))
+            self.assertEqual(len(sil), 2, "two profile edges seen from the side")
+
+
 class TestDisplayGN(unittest.TestCase):
     def test_back_copy(self):
         gn = importlib.import_module("su.draw.display_gn")

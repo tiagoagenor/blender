@@ -152,26 +152,15 @@ class DimensionTool(BaseTool):
 
     def draw_3d(self, dc):
         prims = registry.optional("draw.prims")
-        ann = registry.optional("draw.annotations")
-        if prims is None or self.a is None:
+        if prims is None or self.a is None or self.b is not None or self.current is None:
             return
-        black = colors.rgba(colors.EDGE, 1.0)
-        if self.b is None:
-            if self.current is not None:
-                prims.line(dc, self.a, self.current, black, 1.0, depth=False)
-            return
-        if ann is not None:
-            prims.lines(dc, ann.dimension_geometry(dc, self.a, self.b, self.offset), black, 1.0, depth=False)
+        prims.line(dc, self.a, self.current, colors.rgba(colors.EDGE, 1.0), 1.0, depth=False)
 
     def draw_2d(self, dc):
-        prims = registry.optional("draw.prims")
-        if prims is None or self.a is None or self.b is None:
+        ann = registry.optional("draw.annotations")
+        if ann is None or self.a is None or self.b is None:
             return
-        mid = (self.a + self.b) * 0.5 + self.offset
-        s = viewutil.project(dc.region, dc.rv3d, mid)
-        if s is not None:
-            prims.text(dc, (s.x, s.y + viewutil.ui_px(3)), fmt_length((self.b - self.a).length), 11,
-                       colors.rgba(colors.EDGE, 1.0), bg=(1.0, 1.0, 1.0, 0.75), align='CENTER')
+        ann.draw_dimension_2d(dc, self.a, self.b, self.offset, fmt_length((self.b - self.a).length))
 
 
 def register():

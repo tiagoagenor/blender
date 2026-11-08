@@ -4,11 +4,15 @@
 Layers (draw/handlers.py):
   guides   POST_VIEW  GUIDES=40    infinite dashed guide lines (clipped to the view frustum) and
                                    guide points (small cross), hidden with Visualizar ▸ Guias
-  annot    POST_VIEW  ANNOT_3D=45  dimension lines, extension lines, slash ends; text leaders
-  annot2d  POST_PIXEL ANNOT_2D=10  dimension and leader texts in screen space (always legible, AC-DIM-3)
+  annot    POST_VIEW  ANNOT_3D=45  text leaders
+  annot2d  POST_PIXEL ANNOT_2D=10  dimensions (SketchUp style, drawn ON TOP, never hidden by the geometry
+                                   they annotate: extension lines, dimension line, slash ends, text centred
+                                   on the line and aligned to the screen — AC-DIM-3) and leader texts
            + the vertical-FOV keeper (core.camera.check_fov) — Blender's lens fits the width, so the
              35° vertical FOV must be re-fitted when the region aspect changes (AC-NAV-7).
 """
+
+import math
 
 import bpy
 from mathutils import Vector
@@ -21,7 +25,7 @@ ORDER = 240
 
 DASH_PX, GAP_PX = 6, 4
 EXT_OVERSHOOT_PX = 6          # extension lines pass the dimension line by this much
-SLASH_PX = 6
+SLASH_PX = 12
 TEXT_SIZE = 11
 _last = {"guides": 0, "dims": 0, "texts": 0}
 
@@ -81,26 +85,49 @@ def _px_world(dc, co, px):
     return k * viewutil.ui_px(px)
 
 
-def dimension_geometry(dc, a, b, off):
-    """3D segments of a linear dimension: extension lines, dimension line and slash ends."""
+def _rot(v, deg):
+    c, s_ = math.cos(math.radians(deg)), math.sin(math.radians(deg))
+    return Vector((v.x * c - v.y * s_, v.x * s_ + v.y * c))
+
+
+def dimension_screen(dc, a, b, off):
+    """Screen-space (POST_PIXEL) parts of a linear dimension, SketchUp style: two extension lines from the
+    measured points past the dimension line, the dimension line, slash end marks; plus the text
+    position (middle of the dimension line). Returns (lines, slashes, mid) or None when off screen."""
     a, b, off = Vector(a), Vector(b), Vector(off)
-    A, B = a + off, b + off
-    segs = [(A, B)]
-    if off.length > 1e-9:
-        n = off.normalized()
-        for p, P in ((a, A), (b, B)):
-            segs.append((p, P + n * _px_world(dc, P, EXT_OVERSHOOT_PX)))
-    else:
-        n = None
-    ab = B - A
-    if ab.length > 1e-9:
-        t = ab.normalized()
-        side = n if n is not None else t.orthogonal().normalized()
-        s = (t + side).normalized()
-        for P in (A, B):
-            h = _px_world(dc, P, SLASH_PX) * 0.5
-            segs.append((P - s * h, P + s * h))
-    return segs
+    P = [viewutil.project(dc.region, dc.rv3d, p) for p in (a, b, a + off, b + off)]
+    if any(p is None for p in P):
+        return None
+    sa, sb, SA, SB = P
+    lines = [(SA, SB)]
+    over = viewutil.ui_px(EXT_OVERSHOOT_PX)
+    for p, Q in ((sa, SA), (sb, SB)):
+        e = Q - p
+        if e.length > 0.5:
+            lines.append((p, Q + e.normalized() * over))
+    slashes = []
+    t = SB - SA
+    if t.length > 0.5:
+        t = t.normalized()
+        h = viewutil.ui_px(SLASH_PX) * 0.5
+        d = _rot(t, 45.0)
+        for Q in (SA, SB):
+            slashes.append((Q - d * h, Q + d * h))
+    return lines, slashes, (SA + SB) * 0.5
+
+
+def draw_dimension_2d(dc, a, b, off, text):
+    parts = dimension_screen(dc, a, b, off)
+    if parts is None:
+        return False
+    lines, slashes, mid = parts
+    black = colors.rgba(colors.EDGE, 1.0)
+    prims.lines(dc, [(tuple(p) + (0.0,), tuple(q) + (0.0,)) for p, q in lines], black, 1.0, depth=False)
+    prims.lines(dc, [(tuple(p) + (0.0,), tuple(q) + (0.0,)) for p, q in slashes], black, 2.0, depth=False)
+    if text:
+        prims.text(dc, (mid.x, mid.y - viewutil.ui_px(TEXT_SIZE) * 0.38), text, TEXT_SIZE, black,
+                   bg=(1.0, 1.0, 1.0, 0.85), align='CENTER')
+    return True
 
 
 def draw_annot_3d(dc):
@@ -108,17 +135,11 @@ def draw_annot_3d(dc):
     if d is None:
         return
     black = colors.rgba(colors.EDGE, 1.0)
-    segs = []
-    for dm in d.dims:
-        segs += dimension_geometry(dc, dm.a, dm.b, dm.offset)
-    if segs:
-        prims.lines(dc, segs, black, 1.0, depth=True)
     lead = [(Vector(t.anchor), Vector(t.leader_end)) for t in d.texts
             if (Vector(t.leader_end) - Vector(t.anchor)).length > 1e-9]
     if lead:
         prims.lines(dc, lead, black, 1.0, depth=False)
         prims.points(dc, [a for a, _b in lead], black, 4, 'CIRCLE', outline=False)
-    _last["dims"] = len(d.dims)
     _last["texts"] = len(d.texts)
 
 
@@ -128,13 +149,11 @@ def draw_annot_2d(dc):
     if d is None:
         return
     black = colors.rgba(colors.EDGE, 1.0)
+    n = 0
     for i, dm in enumerate(d.dims):
-        mid = (Vector(dm.a) + Vector(dm.b)) * 0.5 + Vector(dm.offset)
-        s = viewutil.project(dc.region, dc.rv3d, mid)
-        if s is None:
-            continue
-        prims.text(dc, (s.x, s.y + viewutil.ui_px(3)), guides.dimension_text(i), TEXT_SIZE, black,
-                   bg=(1.0, 1.0, 1.0, 0.75), align='CENTER')
+        if draw_dimension_2d(dc, dm.a, dm.b, dm.offset, guides.dimension_text(i)):
+            n += 1
+    _last["dims"] = n
     for t in d.texts:
         s = viewutil.project(dc.region, dc.rv3d, Vector(t.leader_end))
         if s is None or not t.text:

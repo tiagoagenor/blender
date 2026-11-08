@@ -50,6 +50,8 @@ class TestCameraTools(unittest.TestCase):
         self.assertEqual(testing.state_dump()["vcb_label_key"], "vcb.eye_height")
         testing.type_text("1,5")
         self.assertAlmostEqual(base.controller("su.position_camera").height, 1.5)
+        testing.click(pt(-3, -2, 0))
+        self.assertLess((base.controller("su.position_camera").last[0] - Vector((-3, -2, 0))).length, 1e-9)
         base.DISPATCH.set_tool(base.ToolContext(), '')
 
 

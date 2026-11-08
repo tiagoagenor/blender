@@ -25,7 +25,7 @@ Legenda: [x] feito · [~] em andamento · [ ] pendente
 
 ## 3. Desenvolvimento
 ### 3.1 Base do template
-- [ ] Estrutura do App Template + instalação para teste
+- [x] Estrutura do App Template + ambiente de teste isolado (A0, merge bd397e0)
 - [ ] Layout: barra de ferramentas no topo, Large Tool Set à esquerda, bandeja (tray) à direita, barra de status embaixo
 - [ ] Esconder o que não é do SketchUp (sem painel Etiquetas/Tags)
 - [ ] Tema/cores do SketchUp + céu azul no horizonte + chão
@@ -74,6 +74,11 @@ Legenda: [x] feito · [~] em andamento · [ ] pendente
 - [ ] Cache de geometria para snap
 - [ ] Desenho GPU em lote (batches)
 - [ ] Teste com modelo grande
+
+### 3.9 Pedidos extras do usuário
+- [~] Apagar só uma face (retângulo e caixa): face some, arestas ficam; Apagar aresta remove faces vizinhas; redesenhar aresta cura (agente B + roteiro do especialista)
+- [~] Roteiro "casa simples" com Linha + Empurrar/Puxar, comparado com tutoriais do SketchUp → `ROTEIRO_CASA.md` (especialista pesquisando)
+- [ ] Rodar o roteiro da casa no nosso Blender com prints de cada etapa (após Empurrar/Puxar pronto)
 
 ## 4. Testes e comparação
 - [ ] Print do nosso modo × print do SketchUp (enviar ao usuário)

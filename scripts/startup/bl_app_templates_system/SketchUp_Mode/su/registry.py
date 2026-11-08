@@ -92,3 +92,20 @@ def cancel_deferred():
         tick = _timers.pop()
         if bpy.app.timers.is_registered(tick):
             bpy.app.timers.unregister(tick)
+
+
+def optional(rel):
+    """Module `su.<rel>` (e.g. "core.vcb") when it exists and imports cleanly, else None.
+
+    Lets A consume other owners' modules without hard imports while they are built in parallel
+    (unit tests inject fakes into sys.modules under the same name: tests/sketchup_mode/unit/fakes.py)."""
+    import importlib
+    import sys
+    name = __package__ + "." + rel
+    mod = sys.modules.get(name)
+    if mod is not None:
+        return mod
+    try:
+        return importlib.import_module(name)
+    except ImportError:
+        return None

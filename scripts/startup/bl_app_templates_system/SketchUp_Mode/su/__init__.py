@@ -8,8 +8,9 @@ An import or register error of one module = perf.error + that module is skipped 
 when perf.errors() > 0). The only finalizer is `keymap.finalize()` (when su/keymap.py exists).
 `draw/` is not imported in background mode (unit tests).
 
-Readiness: after each load_post the package sets bpy.app.driver_namespace["su_ready"] = True
-(deferred, so start-up timers queued during load run first); the GUI harness waits for it.
+Readiness: after each load_post, session.on_load_post() emits "load" and later sets
+bpy.app.driver_namespace["su_ready"] = True (deferred; owners with timer-driven setup delay it with
+session.hold(name)/release(name)); the GUI harness waits for it.
 """
 
 import importlib
@@ -80,7 +81,8 @@ def _on_load_post(*_args):
     bpy.app.driver_namespace[READY_KEY] = False
     session = sys.modules.get(__name__ + ".session")
     if session is not None and hasattr(session, "on_load_post"):
-        session.on_load_post()
+        session.on_load_post()          # emits "load" and sets su_ready itself (session.hold/release)
+        return
     else:
         from . import events
         events.emit("load")

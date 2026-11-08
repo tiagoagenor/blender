@@ -63,6 +63,13 @@ def push(message_key):
 
 def _restore(direction):
     from . import state
+    from .. import registry
+    from ..tools import base
+    if base.DISPATCH.running:
+        base.DISPATCH.cancel(base.tool_context())
+    document = registry.optional("core.document")
+    if document is not None and hasattr(document, "invalidate_all"):
+        document.invalidate_all()
     scene = _scene()
     sel = _selection()
     if scene is not None and sel is not None and hasattr(sel, "restore"):

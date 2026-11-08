@@ -69,9 +69,30 @@ def _draw(space):
             perf.exception("draw layer {!r} ({:s}) disabled".format(name, space))
 
 
+def _tool_layer(dc):
+    """Active tool's draw_3d/draw_2d. Also notices tool changes made by toolbar/LTS clicks
+    (wm.tool_set_by_id bypasses su.tool_activate) and syncs the dispatcher on the next tick."""
+    from .. import registry
+    from ..tools import base
+    if dc.phase == 'POST_PIXEL' and base.active_tool_id(dc.context) != base.DISPATCH.tool_id \
+            and not _sync_pending[0]:
+        _sync_pending[0] = True
+
+        def sync():
+            _sync_pending[0] = False
+            base.DISPATCH.sync(base.tool_context())
+        registry.deferred(sync, 0.0)
+    base.DISPATCH.draw(dc, dc.phase)
+
+
+_sync_pending = [False]
+
+
 def register():
     for space in SPACES:
         _handles[space] = bpy.types.SpaceView3D.draw_handler_add(_draw, (space,), 'WINDOW', space)
+    add_layer("tool", 'POST_VIEW', POST_VIEW["TOOL"], _tool_layer)
+    add_layer("tool_2d", 'POST_PIXEL', POST_PIXEL["TOOL_2D"], _tool_layer)
 
 
 def unregister():

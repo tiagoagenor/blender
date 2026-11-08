@@ -89,6 +89,39 @@ def build_scene():
     return dict(box=box, cyl=cyl, rect=rect, diag=diag_co, bridge_i=bridge_i)
 
 
+def build_e_cylinder(h, center=(4.2, -0.8, 0.0), radius="0,5", height="1,4"):
+    """A real cylinder made by E's Círculo + Empurrar/puxar in the root "Modelo" (None if E is absent)."""
+    try:
+        testing = mod("testing")
+        document = mod("core.document")
+        geom_extrude = mod("core.geom_extrude")
+        mod("tools.circle")
+        mod("tools.pushpull")
+    except KeyError:
+        return None
+    cx, cy, cz = center
+    testing.dispatch(testing.ev('MOUSEMOVE', 'NOTHING'), "su.circle", testing.pt(cx, cy, cz))
+    testing.click(testing.pt(cx, cy, cz))
+    testing.move(testing.pt(cx + 1.0, cy, cz))
+    testing.type_text(radius)
+    testing.dispatch(testing.ev('MOUSEMOVE', 'NOTHING'), "su.pushpull", testing.pt(cx, cy, cz))
+    doc = document.root()
+    bm = doc.bm
+    bm.faces.index_update()
+    p = Vector((cx + 0.1, cy + 0.1, cz))
+    f = geom_extrude.faces_at(bm, p)[0]
+    f.normal_update()
+    inf = testing.pt(*p, kind="ON_FACE", elem=("FACE", f.index), doc_key=doc.key, normal=f.normal.copy(),
+                     side=-1, plane=(p.copy(), f.normal.copy()))
+    testing.click(inf)
+    testing.move(testing.pt(cx + 0.1, cy + 0.1, 0.5))
+    testing.type_text(height)
+    testing.dispatch(testing.ev('MOUSEMOVE', 'NOTHING'), "su.select", testing.pt(0, 0, 0))
+    h.check("E cylinder built (soft sides)", any(a.name == "su_soft" for a in doc.obj.data.attributes),
+            [a.name for a in doc.obj.data.attributes])
+    return doc.obj
+
+
 # ------------------------------------------------------------------------------------------- pixels
 class Shot:
     def __init__(self, path):
@@ -177,6 +210,7 @@ def run(h):
 
     # ---- 2. demo scene
     sc = build_scene()
+    ecyl = build_e_cylinder(h)
     for ob in (sc["box"], sc["cyl"], sc["rect"]):
         m = ob.modifiers.get("SU_Display")
         h.check("GN back copy on " + ob.name, m is not None and m.node_group is not None)
@@ -217,6 +251,18 @@ def run(h):
     probe("horizon (sky side)", (reg.x + reg.width * 0.9, hy + 4), (191, 229, 245), 8)
     tr = R['TOOLS']
     probe("chrome (LTS background)", (tr.x + tr.width * 0.5, tr.y + 8), (241, 241, 246), 5)
+    if ecyl is not None:
+        edges_mod = mod("draw.edges")
+        root = ecyl
+        eye = root.matrix_world.inverted() @ rv3d.view_matrix.inverted().translation
+        data = edges_mod.edge_classes(root.data)
+        sil = edges_mod.silhouette_mask(data, tuple(eye))
+        probes["E cylinder profile candidates"] = int(data["profile"].sum())
+        h.check("E cylinder: 2 profile edges for this view", len(sil) == 2, len(sil))
+        for k, ei in enumerate(sil):
+            a, b = (root.matrix_world @ root.data.vertices[v].co for v in root.data.edges[int(ei)].vertices)
+            c = probe("E cylinder profile {:d}".format(k), tuple(a.lerp(b, 0.5)), darkest=True)
+            h.check("E cylinder profile {:d} black".format(k), c is not None and max(c) <= 60, c)
     probe("face front (−Y)", (1.3, 0.0, 0.4), (255, 255, 255))
     probe("face side (+X)", (2.0, 1.5, 0.75), (210, 210, 210))
     probe("face top", (1.6, 2.2, 1.5), (160, 160, 160))

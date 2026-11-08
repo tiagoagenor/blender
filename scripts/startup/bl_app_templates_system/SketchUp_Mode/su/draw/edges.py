@@ -31,6 +31,7 @@ ORDER = 222
 GREY_OUT_OF_CONTEXT = (150, 150, 150)
 _style = {"show_edges": True, "show_profiles": True, "color_override": {}, "back_edges": False, "xray": False}
 BACK_EDGE_COLOR = (60, 60, 60)
+PROFILE_WIDTH = 1.5        # pt — silhouettes of smooth surfaces read a bit heavier, like SketchUp's profiles
 _cache = {}          # mesh pointer -> entry dict
 _serial = {}         # mesh name -> int (bumped by mark_dirty / depsgraph)
 MAX_SIL_KEYS = 32
@@ -224,14 +225,14 @@ def draw(dc):
             continue
         M = inst.matrix_world.copy()
         e = _entry(me, sh)
-        batches = [e["static"]]
+        batches = [(e["static"], 1.0)]
         if _style["show_profiles"] and e["data"]["profile"].any():
             Minv = M.inverted_safe()
             if persp:
-                batches.append(_silhouette_batch(e, sh, Minv @ eye, None))
+                batches.append((_silhouette_batch(e, sh, Minv @ eye, None), PROFILE_WIDTH))
             else:
                 d = (Minv.to_3x3() @ view_dir).normalized()
-                batches.append(_silhouette_batch(e, sh, None, d))
+                batches.append((_silhouette_batch(e, sh, None, d), PROFILE_WIDTH))
         col = black
         if in_ctx is not None:
             try:
@@ -239,7 +240,7 @@ def draw(dc):
                     col = grey
             except Exception:
                 pass
-        draws.append((M, col, [b for b in batches if b is not None], e))
+        draws.append((M, col, [b for b in batches if b[0] is not None], e))
     if not draws:
         return
     ps = ctx.preferences.system.pixel_size
@@ -257,7 +258,8 @@ def draw(dc):
             with gpu.matrix.push_pop():
                 gpu.matrix.multiply_matrix(M)
                 sh.uniform_float("color", col)
-                for b in batches:
+                for b, w in batches:
+                    sh.uniform_float("lineWidth", w * ps)
                     b.draw(sh)
     gpu.state.depth_test_set('NONE')
     gpu.state.blend_set('NONE')

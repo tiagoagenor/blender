@@ -72,6 +72,18 @@ def run(h):
         yield 0.3
     h.check("modifier clicks leave no geometry", h.stats().get("edges") == 0, h.stats().get("edges"))
 
+    # 2c. arrow locks before the first click (Window keymap → su.tool_key → dispatcher)
+    STATE = __import__(h.su.__name__ + ".core.state", fromlist=["x"]).STATE
+    h.glide(*h.world_xy((1.0, 1.0, 0.0)))
+    yield 0.2
+    h.key('UP_ARROW')
+    yield 0.3
+    h.check("↑ before the click locks the blue axis (idle)", STATE.locks.axis == "AXIS_Z" and not h.state()["running"],
+            STATE.locks.axis)
+    h.key('UP_ARROW')
+    yield 0.3
+    h.check("↑ again unlocks", STATE.locks.axis == "", STATE.locks.axis)
+
     # 3. rectangle 3×2 by Measurements
     h.glide(*h.world_xy((0.0, 0.0, 0.0)))
     yield 0.3

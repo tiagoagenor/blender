@@ -198,6 +198,17 @@ class TestEvents(DispatchCase):
         self.assertTrue(base.DISPATCH.last_error.startswith("RuntimeError"))
         base.DISPATCH.last_error = ''
 
+    def test_arrow_lock_while_idle(self):
+        self.assertFalse(base.DISPATCH.running)
+        r = testing.dispatch(testing.ev('UP_ARROW', 'PRESS'))
+        self.assertIs(r, base.Result.IDLE)            # consumed, tool still idle
+        self.assertEqual(state.STATE.locks.axis, "AXIS_Z")
+        testing.dispatch(testing.ev('UP_ARROW', 'PRESS'))
+        self.assertEqual(state.STATE.locks.axis, "")
+        items = [it for it in keymap.window_items() if it[0] == "su.tool_key"]
+        self.assertEqual(sorted(it[1]["type"] for it in items),
+                         ['DOWN_ARROW', 'LEFT_ARROW', 'RIGHT_ARROW', 'UP_ARROW'])
+
     def test_locks_reset_when_operation_ends(self):
         self.press()
         state.STATE.locks.axis = "AXIS_Z"

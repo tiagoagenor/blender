@@ -258,6 +258,39 @@ class SU_OT_coming_soon(bpy.types.Operator):
         return {'FINISHED'}
 
 
+ARROWS = ('UP_ARROW', 'DOWN_ARROW', 'LEFT_ARROW', 'RIGHT_ARROW')
+
+
+class SU_OT_tool_key(bpy.types.Operator):
+    """Arrow keys with the tool idle (before the first click): axis/plane locks through the dispatcher
+    (SketchUp: ↑ before clicking = vertical plane / blue lock). While a tool runs, its modal gets them
+    first. Text fields being edited get keys before any keymap, so they are unaffected."""
+    bl_idname = "su.tool_key"
+    bl_label = "SketchUp Mode: tool key"
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        return keymap_poll(context)
+
+    def invoke(self, context, event):
+        if event.value != 'PRESS' or event.ctrl or event.oskey or base.DISPATCH.running:
+            return {'PASS_THROUGH'}
+        tc = base.tool_context(context)
+        base.DISPATCH.sync(tc)
+        r = base.DISPATCH.handle(tc, base.event_from_bpy(event, tc.region), None)
+        if r is base.Result.PASS:
+            return {'PASS_THROUGH'}
+        # refresh the hover (plane gizmo / inference) under the cursor with the new lock
+        reg = tc.region
+        if reg is not None:
+            x, y = event.mouse_x - reg.x, event.mouse_y - reg.y
+            if 0 <= x < reg.width and 0 <= y < reg.height:
+                base.DISPATCH.hover(tc, (x, y))
+        STATE.redraw_viewport(reg)
+        return {'FINISHED'}
+
+
 CONTEXT_MENUS = ("SU_MT_context",)    # F's context menu (first registered name wins)
 
 
@@ -325,7 +358,7 @@ class SU_PG_vcb(bpy.types.PropertyGroup):
 
 
 _classes = (SU_OT_tool_event, SU_OT_tool_activate, SU_OT_vcb_key, SU_OT_vcb_capture, SU_OT_vcb_field_apply,
-            SU_OT_coming_soon, SU_OT_context_menu, SU_PG_vcb)
+            SU_OT_coming_soon, SU_OT_context_menu, SU_OT_tool_key, SU_PG_vcb)
 
 STRINGS = {
     "app.coming_soon": {"pt_BR": "Em breve: {name}", "en": "Coming soon: {name}"},

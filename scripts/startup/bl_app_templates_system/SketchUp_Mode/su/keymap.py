@@ -44,6 +44,11 @@ EXTRA_ITEMS = (
     # (Ctrl+Cmd drag orbit/pan come from G's ops/view_ops.KEYMAP.)
     ("su.context_menu", {"type": 'LEFTMOUSE', "value": 'CLICK', "ctrl": True}, None),
     ("su.context_menu", {"type": 'RIGHTMOUSE', "value": 'PRESS'}, None),
+    # arrow locks before the first click (idle tool); a running tool's modal gets them first
+    ("su.tool_key", {"type": 'UP_ARROW', "value": 'PRESS', "shift": -1}, None),
+    ("su.tool_key", {"type": 'DOWN_ARROW', "value": 'PRESS', "shift": -1}, None),
+    ("su.tool_key", {"type": 'LEFT_ARROW', "value": 'PRESS', "shift": -1}, None),
+    ("su.tool_key", {"type": 'RIGHT_ARROW', "value": 'PRESS', "shift": -1}, None),
 )
 
 # Blender navigation operators replaced by the modules' KEYMAP_VIEW3D items (G's su.view_*): when such

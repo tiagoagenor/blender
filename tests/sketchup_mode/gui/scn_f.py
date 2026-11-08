@@ -258,6 +258,56 @@ def run(h):
               "reach the tool; covered headless in test_f_eraser")
     yield from shot("f_apagar_suavizar")
 
+    # 6. Pintura (B): Materiais section open in the tray; floor seen from above = BACK side (AC-PNT-1)
+    materials = importlib.import_module(su.__name__ + ".core.materials")
+    tray = importlib.import_module(su.__name__ + ".ui.tray")
+    space = area.spaces.active
+    if not space.show_region_ui:
+        space.show_region_ui = True
+    tray.set_open("materials", True)
+    bm = doc.bm
+    bm.clear()
+    selection.clear()
+    for a, b in (((-2, -1, 0), (6, -1, 0)), ((6, -1, 0), (6, 5, 0)), ((6, 5, 0), (-2, 5, 0)), ((-2, 5, 0), (-2, -1, 0))):
+        geom.add_edge(bm, V(a), V(b))
+    for c in (((8, 0, 0), (12, 0, 0)), ((12, 0, 0), (12, 0, 3)), ((12, 0, 3), (8, 0, 3)), ((8, 0, 3), (8, 0, 0))):
+        geom.add_edge(bm, V(c[0]), V(c[1]))
+    with ctx():
+        doc.write(undo_key="undo.adjust")
+    yield 0.4
+    floor = next(f for f in doc.bm.faces if abs(f.calc_center_median().z) < 1e-6)
+    wall = next(f for f in doc.bm.faces if abs(f.calc_center_median().y) < 1e-6 and f.calc_center_median().z > 1)
+    h.check("floor normal −Z (back side up)", floor.normal.z < -0.99, tuple(floor.normal))
+    fi, wi = floor.index, wall.index
+    h.move(*h.region_xy(region, 0.8, 0.8))
+    h.key('B', unicode='b')
+    yield 0.5
+    h.check("B activates su.paint", h.state()["tool"] == "su.paint", h.state()["tool"])
+    h.check("Pintura hint mentions Option and Cmd", "Option" in h.state()["hint"] and "Cmd" in h.state()["hint"],
+            h.state()["hint"])
+    with ctx():
+        bpy.ops.su.material_pick(palette_index=0)
+    red = materials.active()
+    h.check("swatch → active material", red is not None and red.name == materials.palette_rgb()[0][0],
+            red.name if red else None)
+    s0 = bpy.context.scene.su_undo_serial
+    h.click(*h.world_xy((2, 2, 0)))
+    yield 0.6
+    h.check("AC-PNT-1 floor from above: BACK side painted", materials.material_of(doc, fi, -1) == red,
+            materials.material_of(doc, fi, -1))
+    h.check("AC-PNT-1 floor front stays default", materials.material_of(doc, fi, 1) is None)
+    h.check("Pintura: 1 undo step", bpy.context.scene.su_undo_serial - s0 == 1)
+    with ctx():
+        bpy.ops.su.material_pick(palette_index=9)
+    blue = materials.active()
+    h.click(*h.world_xy((10, 0, 1.5)))
+    yield 0.6
+    wside = 1 if doc.bm.faces[wi].normal.y < 0 else -1      # the camera looks from −Y
+    h.check("wall: the seen side painted", materials.material_of(doc, wi, wside) == blue,
+            (wside, materials.material_of(doc, wi, wside)))
+    yield from shot("f_pintura")
+    tray.set_open("materials", False)
+
     h.key('SPACE', unicode=' ')
     yield 0.4
     d = h.state()

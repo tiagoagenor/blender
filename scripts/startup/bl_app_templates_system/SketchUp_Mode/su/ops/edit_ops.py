@@ -293,6 +293,7 @@ def make_group(undo_key="edit.undo_make_group"):
         parent = None if document.kind(doc.obj) == document.KIND_MODEL else doc.obj
         g = document.create_group(None, parent)
         g.obj.matrix_world = doc.world()
+    g.obj["su_instance_name"] = ""
     for o in objs:
         o.parent = g.obj
         o.matrix_world = mws[o.name]
@@ -483,6 +484,7 @@ def make_component(name=None, undo_key="edit.undo_make_component"):
         return make_group(undo_key) if objs else None
     mws = {o.name: o.matrix_world.copy() for o in objs}
     c = document.component_from(doc, faces, edges, name)
+    c.obj["su_instance_name"] = ""
     for o in objs:
         o.parent = c.obj
         o.matrix_world = mws[o.name]
@@ -610,7 +612,7 @@ class MakeComponentCommand(BaseTool):
 
 _CLIP = {"geo": None, "objects": [], "instances": []}
 # geo: geometry in WORLD space; objects: names of detached group copies; instances: component instances
-# as (definition mesh name, object name, world matrix) — no detached object, so the stored copy is never
+# as (definition mesh name, instance name, world matrix) — no detached object, so the stored copy is never
 # counted as an instance of the definition.
 
 
@@ -685,7 +687,8 @@ def copy_selection():
     _free_clip_objects()
     _CLIP["geo"] = geo if geo["verts"] else None
     objs = selection.objects()
-    _CLIP["instances"] = [(o.data.name, o.name, o.matrix_world.copy()) for o in objs if document.is_component(o)]
+    _CLIP["instances"] = [(o.data.name, str(o.get("su_instance_name", "")), o.matrix_world.copy())
+                          for o in objs if document.is_component(o)]
     _CLIP["objects"] = [_store_object(o).name for o in objs if not document.is_component(o)]
     return bool(_CLIP["geo"] or _CLIP["objects"] or _CLIP["instances"])
 
@@ -740,7 +743,8 @@ def paste_in_place(undo_key="edit.undo_paste"):
         me = bpy.data.meshes.get(defname)
         if me is None:
             continue
-        inst = bpy.data.objects.new(name, me)
+        inst = bpy.data.objects.new(me["su_def"] if "su_def" in me else name, me)
+        inst["su_instance_name"] = name            # the copy keeps the instance name (SketchUp)
         inst.su_doc.kind = document.KIND_COMPONENT
         coll.objects.link(inst)
         inst.parent = parent

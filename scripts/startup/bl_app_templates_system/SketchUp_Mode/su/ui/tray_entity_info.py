@@ -99,6 +99,28 @@ def _is_component(name):
         and document.is_component(obj)
 
 
+INSTANCE_NAME = "su_instance_name"     # SketchUp's instance name (blank by default); obj.name stays internal
+
+
+def ensure_instance_name(obj):
+    """Give a group / component instance its (blank) instance name property. Not from draw()."""
+    if obj is not None and obj.type == 'MESH' and INSTANCE_NAME not in obj.keys():
+        obj[INSTANCE_NAME] = ""
+
+
+def instance_name(obj):
+    return str(obj.get(INSTANCE_NAME, "")) if obj is not None else ""
+
+
+def _instance_name_field(col, obj):
+    if INSTANCE_NAME in obj.keys():
+        col.prop(obj, '["{:s}"]'.format(INSTANCE_NAME), text=i18n.t("edit.info.name"))
+    else:
+        row = col.row()
+        row.enabled = False
+        row.label(text=i18n.t("edit.info.name") + ":")
+
+
 def _materials_row(layout, key, idx):
     from ..core import document, materials
     doc = document.get_by_key(key)
@@ -129,11 +151,11 @@ def draw(layout, context):
                     and document.is_component(obj):
                 col.label(text=i18n.t("edit.info.component"))
                 col.label(text="{}: {}".format(i18n.t("edit.info.definition"), document.definition_name(obj)))
-                col.prop(obj, "name", text=i18n.t("edit.info.name"))
+                _instance_name_field(col, obj)
                 n = len(document.instances(obj.data))
                 col.label(text=i18n.t("edit.info.n_instances", n=n))
             elif obj is not None:
-                col.prop(obj, "name", text=i18n.t("edit.info.name"))
+                _instance_name_field(col, obj)
         elif kind in ("FACE", "SURFACE"):
             col.label(text="{}: {}".format(i18n.t("edit.info.area"), fmt_area(s["area"])))
             _materials_row(col, key, idx)
@@ -155,6 +177,13 @@ def draw(layout, context):
 
 
 def _on_selection(**_kw):
+    sel = registry.optional("core.selection")
+    if sel is not None:
+        for o in sel.objects():
+            try:
+                ensure_instance_name(o)
+            except Exception:
+                pass                                # read-only context (e.g. during a draw)
     wm = getattr(bpy.context, "window_manager", None)
     if wm is None:
         return

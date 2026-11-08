@@ -45,6 +45,19 @@ class TestComponents(CompCase):
         self.assertEqual(selection.get(), {Ref(c.key, OBJECT, 0)})
         self.assertIn((c.obj.data.name, 1), tray_components.rows())
 
+    def test_instance_name_blank_and_editable(self):
+        from su.ui import tray_entity_info as info
+        self.assertEqual(info.instance_name(self.c.obj), "")
+        self.c.obj["su_instance_name"] = "Porta da frente"
+        self.assertTrue(edit_ops.copy_selection())
+        edit_ops.paste_in_place()
+        pasted = selection.objects()[0]
+        self.assertEqual(info.instance_name(pasted), "Porta da frente")
+        pl = move.ComponentPlacer(self.c.obj.data.name)
+        pl.start()
+        placed = bpy.data.objects.get(pl.place(testing.pt(30, 0, 0)))
+        self.assertEqual(info.instance_name(placed), "")
+
     def test_move_copy_and_array_share_definition(self):
         testing.dispatch(testing.ev('MOUSEMOVE', 'NOTHING'), "su.move", testing.pt(0, 0, 0))
         self.clock.t += 1

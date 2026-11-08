@@ -319,6 +319,7 @@ class ComponentPlacer:
         if me is None or "su_def" not in me:
             return False
         obj = bpy.data.objects.new(me["su_def"], me)
+        obj["su_instance_name"] = ""            # SketchUp: a new instance has no name
         obj.su_doc.kind = document.KIND_COMPONENT
         cur = edit_context.current_object()
         coll = cur.users_collection[0] if cur is not None and cur.users_collection else bpy.context.scene.collection

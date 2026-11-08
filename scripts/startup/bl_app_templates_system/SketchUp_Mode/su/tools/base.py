@@ -549,7 +549,7 @@ class Dispatcher:
         if self.running and not st.vcb_buffer and shortcut_tool(ev):
             self.cancel(tc)
             return Result.PASS
-        return Result.RUNNING if self.running and ev.unicode else Result.PASS
+        return Result.PASS      # other keys (e.g. K = Arestas traseiras) reach the Window keymap; the op continues
 
     def _count_click(self, ev):
         p = self._press

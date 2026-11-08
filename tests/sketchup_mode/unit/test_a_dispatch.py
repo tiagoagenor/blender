@@ -176,6 +176,12 @@ class TestEvents(DispatchCase):
         self.assertIn("cancel", _names(self.p.calls))
         self.assertFalse(base.DISPATCH.running)
 
+    def test_non_tool_letter_passes_without_cancel(self):
+        self.press()
+        self.assertIs(testing.dispatch(testing.ev('K', 'PRESS', unicode='k')), base.Result.PASS)
+        self.assertTrue(base.DISPATCH.running)
+        self.assertNotIn("cancel", _names(self.p.calls))
+
     def test_cmd_z_cancels_and_passes(self):
         self.press()
         self.assertIs(testing.dispatch(testing.ev('Z', 'PRESS', alt_action=True, unicode='z')), base.Result.PASS)
@@ -248,6 +254,8 @@ class TestKeymapData(unittest.TestCase):
         line = [it for it in items if it[0] == "su.tool_activate" and it[2]["properties"] == [("tool_id", "su.line")]]
         self.assertEqual(len(line), 1)
         self.assertEqual(line[0][1]["type"], 'L')
+        k = [it for it in items if it[1]["type"] == 'K']
+        self.assertEqual([it[0] for it in k], ["su.style_toggle"])
 
     def test_allow_list(self):
         data = {name: content for name, _args, content in keymap.keyconfig_data()}

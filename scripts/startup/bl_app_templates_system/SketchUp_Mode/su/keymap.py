@@ -34,6 +34,21 @@ VCB_ITEMS = (
     ("su.vcb_key", {"type": 'ESC', "value": 'PRESS'}, None),
 )
 
+# Window shortcuts of commands that are not tools (PLANO §5.3), added only when the operator exists.
+EXTRA_ITEMS = (
+    ("su.style_toggle", {"type": 'K', "value": 'PRESS'}, {"properties": [("prop", "show_back_edges")]}),  # Arestas traseiras
+)
+
+
+def _op_exists(idname):
+    mod, _, name = idname.partition(".")
+    try:
+        getattr(getattr(bpy.ops, mod), name).get_rna_type()
+        return True
+    except (AttributeError, KeyError):
+        return False
+
+
 # Keymaps whose non-modal items are filtered by ALLOW (everything else is kept as in blender_default).
 FILTERED = frozenset({
     "Window", "Screen", "Frames", "User Interface", "3D View Generic", "3D View", "Object Mode",
@@ -126,6 +141,9 @@ def window_items():
         for m in mods:
             args[m] = True
         items.append(("su.tool_activate", args, {"properties": [("tool_id", tid)]}))
+    for idname, args, data in EXTRA_ITEMS:
+        if _op_exists(idname):
+            items.append((idname, args, data))
     pkg = sys.modules[__package__]
     for mod in getattr(pkg, "_active", []):
         for it in getattr(mod, "KEYMAP", ()) or ():

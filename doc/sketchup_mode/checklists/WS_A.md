@@ -20,22 +20,23 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 
 ## Fatia vertical (§9.1-MA) — parte de A
 - [x] `run.sh`/`driver.py` do spike → `dev_env.sh`/harness (completo: `run.sh`, `shot.sh`+`scn_shot`, harness com mouse/teclado/`type_text`/`world_xy`/`state`/`stats`/`install_fakes`)
-- [x] registry/auto-descoberta (`registry.optional`), `base` + `su.tool_event` + gizmo de hover (`SU_GGT_hover`)
+- [x] registry/auto-descoberta (`registry.optional`), `base` + `su.tool_event` + hover (item MOUSEMOVE do keymap da ferramenta → `su.tool_event`, PASS_THROUGH)
 - [x] keymap `Window` + `su.vcb_key`/`su.vcb_capture` (+ keyconfig por lista de permissão)
 - [x] undo (serial), session/eventos (`hold/release` de prontidão), `testing`, harness
 - [x] **Linha** (AC-LIN-1, AC-LIN-6, AC-LIN-7 + cadeia/duplo clique/arrasto/Esc) — passa a E após M-A
-- [ ] Integrar C (vcb/inferência reais) e D (visual) quando entrarem; fechar M-A com E (Retângulo)
+- [x] Integrar B, C (vcb `set_applier`, esquema `line`, inferência real) e D (visual, `su_ui_ready`, K = Arestas traseiras)
+- [ ] Fechar M-A com E (Retângulo 2×3 + Cmd+Z no `scn_smoke`) + print lado a lado vazio × ref 2
 
 ## Sub-checklist §9.2-A
 1. [x] dev_env/run/run_unit/run_gui a partir de `visual_spike/run.sh` + `driver.py` (lock, splash, envs DATAFILES/EXTENSIONS, independente do tamanho da janela)
 2. [x] auto-descoberta + registry + eventos + settings + i18n (detecção de duplicatas)
-3. [x] `base`: `su.tool_event` (PRESS/RELEASE; PASS para CLICK/CLICK_DRAG/Ctrl), gizmo de hover, cliques em Python, arrasto→2º clique, política de erro
+3. [x] `base`: `su.tool_event` (PRESS/RELEASE; PASS para CLICK/CLICK_DRAG/Ctrl), hover, cliques em Python, arrasto→2º clique, política de erro
 4. [x] keymap por lista de permissão + itens `Window` na ordem §3.5 + poll; `su.vcb_key` + `su.vcb_capture`
 5. [x] undo: serial em `scene.su_undo_serial`, `before_change`/`push`, restauração de seleção em undo/redo
 6. [x] session por eventos + `undo.init`; invariante sem objeto ativo
 7. [x] Linha (fatia) → passar a E (após M-A)
 8. [x] `testing.dispatch/hover/set_clock/state_dump/doc_stats`
-9. [~] `shot.sh` (feito) + `compare.sh`/`compose.py` + sondas
+9. [~] `shot.sh` + `compare.sh`/`compose.py` (feitos) + sondas
 10. [ ] menus de contexto via Ctrl+clique e órbita Ctrl+Cmd no `Window` (com G)
 11. [ ] prefs com backup/restore + S-E (ida e volta de template, kill -9)
 12. [ ] Integração contínua, rodadas de prints, CHECKLIST mestre
@@ -53,10 +54,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - Agentes isolados em worktree: o verificador do Claude Code recusa `source dev_env.sh` direto no Bash (o script roda `git rev-parse`); contorno: um wrapper `zsh <arquivo>.sh` que faz `cd <worktree> && source tools/sketchup_mode/dev_env.sh X && ...`.
 
 ### Fatia (notas)
-- Despacho único `tools.base.DISPATCH.handle(tc, ev, inf)` para o modal real (`su.tool_event`), o gizmo de hover, o keymap `Window` e `testing.dispatch` (os testes headless exercitam o roteamento real). Cmd+Z no modal = cancelar + PASS_THROUGH (o undo roda em seguida). Shift = trava (`STATE.locks.shift`) no despacho; setas → `inference.lock_from_arrow` (C).
+- Despacho único `tools.base.DISPATCH.handle(tc, ev, inf)` para o modal real (`su.tool_event`), o hover, o keymap `Window` e `testing.dispatch` (os testes headless exercitam o roteamento real). Cmd+Z no modal = cancelar + PASS_THROUGH (o undo roda em seguida). Shift = trava (`STATE.locks.shift`) no despacho; setas → `inference.lock_from_arrow` (C).
 - Medidas: A chama `vcb.feed(ev)` (C); em `'APPLY'` A lê `STATE.vcb_buffer`, roteia (`DISPATCH.apply_vcb`: rodando → `tool.vcb`; ocioso com `last_action` → `reapply` + `undo.push("undo.adjust")`; ocioso sem → `tool.vcb`) e limpa o buffer. **C**: `feed` não limpa o buffer no APPLY; `parse` levanta exceção (ou devolve vazio) em erro → `STATE.vcb_error`. `wm.su_vcb.field` (get = buffer ou valor; set = aplicar) — **D** desenha `prop(wm.su_vcb, "field")`.
-- Ferramentas: `catalog.register` (ORDER 390) cria um `WorkSpaceTool` por `ToolMeta` TOOL/NAV (keymap PRESS/RELEASE → `su.tool_event`, widget `SU_GGT_hover`); **D** monta o LTS com `catalog.lts_tooldefs()` (registrados usam o `_bl_tool`; os demais = placeholder; clique em placeholder → "Em breve" e volta à ferramenta anterior). Cliques na toolbar via `wm.tool_set_by_id` são percebidos pelo desenho/hover (sync); preferir `su.tool_activate`.
+- Ferramentas: `catalog.register` (ORDER 390) cria um `WorkSpaceTool` por `ToolMeta` TOOL/NAV (keymap LEFTMOUSE PRESS/RELEASE + MOUSEMOVE → `su.tool_event`; sem gizmo: o estilo de D usa `space.show_gizmo = False`, que desliga todo gizmo, então o hover vai pelo keymap); **D** monta o LTS com `catalog.lts_tooldefs()` (registrados usam o `_bl_tool`; os demais = placeholder; clique em placeholder → "Em breve" e volta à ferramenta anterior). Cliques na toolbar via `wm.tool_set_by_id` são percebidos pelo desenho/hover (sync); preferir `su.tool_activate`.
 - Keyconfig: não há `presets/keyconfig/SketchUp_Mode.py` (a pasta do template não está nos caminhos de presets); `keymap.py` gera "SketchUp_Mode" a partir de `blender_default` com lista de permissão e ativa por timer (depois do `keyconfig_init` do Blender); restaura o anterior no unregister.
 - Undo inicial: o Blender monta a pilha de undo DEPOIS do `load_post` → o que os donos fazem no evento `"load"` já entra no passo "Original" ("abrir → Cmd+Z → Modelo existe" por construção); `undo.init` só é empurrado se algo mudar depois (passos por timer).
 - Prontidão: **D** (passos por timer) chama `session.hold("d.startup")` no `"load"` e `session.release("d.startup")` no último passo.
-- B entrou (5e6bb2f): Linha usa `Document`/`add_edge` reais (`add_edge` já roda `auto_faces`). C/D ainda ausentes: testes e `scn_a` usam `tests/sketchup_mode/unit/fakes.py` (vcb, inferência mínima) só para módulos que não existem.
+- B, C e D integrados (até 0be0a33): Linha usa `Document`/`add_edge` (já roda `auto_faces`), `vcb.feed/parse` e `ENGINE.query` reais. `fakes.py` só entra para módulo ausente (hoje nenhum). Teclas que não são de ferramenta passam pelo modal sem cancelar (K funciona desenhando).
+- `scn_a` (27 checks): L sobre a Bandeja, hover → "Ponto de origem", Ctrl+clique não inicia, retângulo 3×2 pelas Medidas (1 face 6 m², normal −Z, 4 undos), MMB no meio da cadeia, `3` Enter sobre a Bandeja (modal) e `4` Enter ocioso (captura → Ajustar), Cmd+Z ×2. Prints: `doc/sketchup_mode/screens/a_*.png`.

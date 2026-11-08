@@ -5,7 +5,9 @@ Icon handles are strings, the same ones stored in `ToolDef.icon`:
   "bi.NAME"          Blender built-in SVG icon (drawn in the theme's wcol_*.text colour, navy)
   "ops.x.y" etc.     Blender toolbar geometry icon, RECOLOURED copy `icons/su.<handle>.dat`
                      (tools/sketchup_mode/build_icons.py: navy/cyan/red, pre-inverted for light themes)
-  "png.NAME"         original PNG icon `icons/png/NAME.png` (bpy.utils.previews)
+  "draw.NAME"        ORIGINAL vector icon `icons/su.draw.NAME.dat` (tools/sketchup_mode/build_icons_draw.py)
+  "png.NAME"         PNG image `icons/png/NAME.png` (bpy.utils.previews; drawn at 16 px, so only for
+                     thumbnails such as the tray's style preview)
 A "_dim" suffix (e.g. "ops.mesh.bisect_dim") gives the 40 % variant used by disabled buttons.
 
 `ToolSelectPanelHelper._icon_value_from_icon_handle` is patched (registry.override) so the toolbar,
@@ -24,16 +26,17 @@ ICON_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 PNG_DIR = os.path.join(ICON_DIR, "png")
 DIM_SUFFIX = "_dim"
 
-# tool id -> icon handle (spike table; "png." originals replace these as they are drawn, §9.2-D item 9.1)
+# tool id -> icon handle: "draw." = original drawings (tools/sketchup_mode/build_icons_draw.py, §9.2-D 9.1);
+# the rest are the spike's recoloured Blender glyphs
 TOOL_ICONS = {
     "su.search": "bi.VIEWZOOM",
-    "su.select": "ops.generic.select",
+    "su.select": "draw.select",
     "su.lasso": "ops.generic.select_lasso",
-    "su.paint": "brush.gpencil_draw.fill",
-    "su.eraser": "brush.gpencil_draw.erase",
+    "su.paint": "draw.paint",
+    "su.eraser": "draw.eraser",
     "su.make_component": "ops.mesh.primitive_cube_add_gizmo",
     "su.make_group": "ops.mesh.primitive_cube_add_gizmo",
-    "su.line": "ops.gpencil.primitive_line",
+    "su.line": "draw.line",
     "su.freehand": "ops.gpencil.draw",
     "su.rectangle": "ops.gpencil.primitive_box",
     "su.rotated_rectangle": "ops.transform.resize.cage",
@@ -43,23 +46,23 @@ TOOL_ICONS = {
     "su.arc2": "ops.gpencil.primitive_curve",
     "su.arc3": "ops.mesh.spin",
     "su.pie": "ops.gpencil.edit_bend",
-    "su.move": "ops.transform.translate",
-    "su.pushpull": "ops.mesh.extrude_region_move",
-    "su.rotate": "ops.transform.rotate",
+    "su.move": "draw.move",
+    "su.pushpull": "draw.pushpull",
+    "su.rotate": "draw.rotate",
     "su.followme": "ops.mesh.extrude_faces_move",
-    "su.scale": "ops.transform.resize",
+    "su.scale": "draw.scale",
     "su.offset": "ops.mesh.inset",
     "su.axes": "bi.EMPTY_AXIS",
     "su.flip": "ops.gpencil.edit_mirror",
-    "su.tape": "ops.view3d.ruler",
+    "su.tape": "draw.tape",
     "su.dimension": "bi.DRIVER_DISTANCE",
-    "su.protractor": "bi.DRIVER_ROTATIONAL_DIFFERENCE",
+    "su.protractor": "draw.protractor",
     "su.text": "bi.FILE_TEXT",
     "su.section": "ops.mesh.bisect",
     "su.text3d": "bi.OUTLINER_OB_FONT",
-    "su.orbit": "bi.ORIENTATION_GIMBAL",
-    "su.pan": "bi.VIEW_PAN",
-    "su.zoom": "bi.ZOOM_IN",
+    "su.orbit": "draw.orbit",
+    "su.pan": "draw.pan",
+    "su.zoom": "draw.zoom",
     "su.zoom_window": "bi.ZOOM_SELECTED",
     "su.zoom_extents": "bi.ZOOM_ALL",
     "su.previous": "bi.ZOOM_PREVIOUS",
@@ -70,8 +73,8 @@ TOOL_ICONS = {
 }
 # UI icons that are not tools (status bar, tray title)
 UI_ICONS = {
-    "pin": "bi.PINNED",
-    "info": "bi.INFO",
+    "pin": "draw.ui_pin",
+    "info": "draw.ui_info",
     "close": "bi.X",
 }
 

@@ -236,6 +236,8 @@ def draw(dc):
     with shaders.offset_projection(rv3d):
         sh.uniform_float("viewportSize", gpu.state.viewport_get()[2:])
         sh.uniform_float("lineWidth", 1.0 * ps)
+        # 1 pt black: on a 1× display a smoothed 1 px line comes out grey — draw it crisp instead.
+        _set_smooth(sh, ps >= 1.5)
         for M, col, batches in draws:
             if not batches:
                 continue
@@ -246,6 +248,16 @@ def draw(dc):
                     b.draw(sh)
     gpu.state.depth_test_set('NONE')
     gpu.state.blend_set('NONE')
+
+
+def _set_smooth(sh, on):
+    try:
+        sh.uniform_bool("lineSmooth", bool(on))
+    except Exception:
+        try:
+            sh.uniform_int("lineSmooth", 1 if on else 0)
+        except Exception:
+            pass
 
 
 def _on_depsgraph(scene, depsgraph):

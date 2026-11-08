@@ -9,7 +9,8 @@
    `su.<handle>.dat` and a 40 % alpha `su.<handle>_dim.dat`. Blender inverts the HSL lightness of
    geometry icons when the toolbar theme is light (interface_icons.cc), so the colours stored are the
    PRE-INVERTED colours of what we want on screen.
-2. Draws the original PNG icons (icons/png/*.png, see build_icons_png.py) when Pillow is available.
+2. Writes the ORIGINAL vector icons (build_icons_draw.py → su.draw.<name>.dat, handle "draw.<name>") and
+   the tray style thumbnail (icons/png/style_simple.png, needs Pillow).
 Only the system python3 is needed (no bpy).
 """
 
@@ -80,15 +81,10 @@ def main():
     for h in handles:
         convert(src_dir, out_dir, h)
     print("build_icons: {:d} recoloured .dat icons (+ _dim)".format(len(handles)))
-    try:
-        sys.path.insert(0, HERE)
-        import build_icons_png
-    except ImportError as ex:
-        print("build_icons: original PNG icons skipped ({})".format(ex))
-        return
-    n = build_icons_png.build(os.path.join(out_dir, "png"))
-    print("build_icons: {:d} original PNG icons (+ _dim)".format(n))
-
+    sys.path.insert(0, HERE)
+    import build_icons_draw
+    n = build_icons_draw.build(out_dir)
+    print("build_icons: {:d} original vector icons (+ _dim)".format(n))
 
 if __name__ == "__main__":
     main()

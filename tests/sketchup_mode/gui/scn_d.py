@@ -139,7 +139,8 @@ def run(h):
     h.check("tray width ≈ 300 pt (startup.blend)", 280 <= ui_w <= 320, ui_w)
     tray = mod("ui.tray")
     ui_region = R['UI']
-    h.check("tray category", ui_region.active_panel_category == tray.CATEGORY, ui_region.active_panel_category)
+    h.check("tray drawn without category (no tab strip, §9.2-D 9.4)", ui_region.active_panel_category == "UNSUPPORTED",
+            ui_region.active_panel_category)
     h.check("tray: all sections closed", bpy.context.window_manager.su_tray.open_ids == "",
             bpy.context.window_manager.su_tray.open_ids)
     secs = [s for s, _ in tray.sections()]
@@ -167,6 +168,10 @@ def run(h):
         + list(tray.STRINGS.values())))
     h.check("active tool su.select", mod("tools.base").active_tool_id() == "su.select",
             mod("tools.base").active_tool_id())
+    ic = mod("icons")
+    for tid in ("su.line", "su.move", "su.pushpull", "su.orbit", "su.pan", "su.zoom"):
+        h.check("original icon " + tid, ic.TOOL_ICONS[tid].startswith("draw.") and ic.tool_icon(tid) > 0,
+                (ic.TOOL_ICONS[tid], ic.tool_icon(tid)))
     h.check("start view FOV 35°", abs(math.degrees(2 * math.atan(1 / sp.region_3d.window_matrix[1][1])) - 35.0) < 0.5)
 
     # ---- 2. demo scene
@@ -204,7 +209,7 @@ def run(h):
             h.check("probe " + name, near(c, target, tol), (c, target))
         return c
 
-    probe("sky top", (reg.x + reg.width * 0.6, reg.y + reg.height - 6), (30, 166, 221), 8)
+    probe("sky top", (reg.x + reg.width * 0.6, reg.y + reg.height - 2 * ps), (30, 166, 221), 8)
     probe("ground", (reg.x + reg.width * 0.9, reg.y + 30), (191, 191, 198), 6)
     hz = mod("draw.sky").horizon_ndc_y(rv3d)
     hy = reg.y + (hz + 1) * 0.5 * reg.height

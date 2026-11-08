@@ -3,8 +3,8 @@
 
 ONE `HIDE_HEADER` panel in the 3D view's UI region, category "Bandeja" (HIDE_HEADER panels have no
 Blender drag grip): a title row ("Bandeja padrão", pin, ✕) and one flat box row per section (chevron +
-name + ✕, theme `wcol_box`), the body drawn below an open row. The single category tab is made
-invisible by the theme (`wcol_tab` = chrome).
+name + ✕, theme `wcol_box`), the body drawn below an open row. The panel's category is cleared at
+its first draw, so the region has no category and no tab strip (the theme also hides `wcol_tab`).
 
     register_section(order, id, label_key, draw_fn, priority='P0')   # draw_fn(layout, context)
 
@@ -22,6 +22,9 @@ from .. import icons
 ORDER = 550
 
 CATEGORY = "Bandeja"
+# PLANO §4.4 (decision R2 #9): P2 sections (Sombras, Suavizar arestas, Estruturador) do NOT appear.
+# True = show them as greyed rows ("Em breve") — only if the lead/user overrides the plan.
+SHOW_P2_SECTIONS = False
 
 STRINGS = {
     "tray.title": "Bandeja padrão",
@@ -34,6 +37,9 @@ STRINGS = {
     "tray.placeholder.entity": "Nenhuma seleção",
     "tray.placeholder.materials": "Em uso no modelo",
     "tray.placeholder.soon": "Em breve",
+    "tray.shadows": "Sombras",
+    "tray.soften": "Suavizar arestas",
+    "tray.outliner": "Estruturador",
 }
 
 _sections = {}     # id -> dict(order, label_key, draw, priority, placeholder)
@@ -41,7 +47,7 @@ _sections = {}     # id -> dict(order, label_key, draw, priority, placeholder)
 
 def register_section(order, id, label_key, draw_fn, priority='P0', *, placeholder=False):
     """Add/replace a tray section. P2 sections are dropped (not shown)."""
-    if priority == 'P2':
+    if priority == 'P2' and not SHOW_P2_SECTIONS:
         _sections.pop(id, None)
         return
     _sections[id] = dict(order=order, label_key=label_key, draw=draw_fn, priority=priority,
@@ -127,19 +133,28 @@ class SU_PT_tray(bpy.types.Panel):
     bl_order = 0
 
     def draw(self, context):
+        if self.bl_category:
+            # §9.2-D 9.4: a panel type WITHOUT category adds no category to the region, so Blender
+            # reserves no tab strip (≈20 pt). Python registration forces a category ("Misc"), but
+            # PanelType.category is writable from an instance: clear it once (CATEGORY is kept on
+            # the class for hide.py / active_panel_category).
+            self.bl_category = ""
+            context.region.tag_redraw()
         wm = context.window_manager
         opened = _open_set(wm)
         lay = self.layout
         row = lay.row()
         row.label(text=i18n.t("tray.title"))
-        r = row.row(align=True)
+        r = row.row(align=False)
         r.alignment = 'RIGHT'
         r.label(text="", icon_value=icons.ui_icon("pin"))
         r.label(text="", icon_value=icons.ui_icon("close"))
         col = lay.column(align=True)
         for sid, s in sorted(_sections.items(), key=lambda kv: kv[1]["order"]):
             is_open_ = sid in opened
-            hr = col.box().row(align=True)
+            box = col.box()
+            box.active = s["priority"] != 'P2'
+            hr = box.row(align=True)
             left = hr.row(align=True)
             left.alignment = 'LEFT'
             left.operator("su.tray_toggle", text="", emboss=False,
@@ -177,7 +192,10 @@ def register():
     for order, sid, prio, key in ((10, "entity", 'P0', "tray.placeholder.entity"),
                                   (20, "materials", 'P0', "tray.placeholder.materials"),
                                   (30, "components", 'P1', "tray.placeholder.soon"),
-                                  (50, "scenes", 'P1', "tray.placeholder.soon")):
+                                  (50, "scenes", 'P1', "tray.placeholder.soon"),
+                                  (45, "shadows", 'P2', "tray.placeholder.soon"),
+                                  (60, "soften", 'P2', "tray.placeholder.soon"),
+                                  (70, "outliner", 'P2', "tray.placeholder.soon")):
         if sid not in _sections:
             register_section(order, sid, "tray." + sid, _placeholder(key), prio, placeholder=True)
 

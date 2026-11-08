@@ -11,13 +11,13 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 6. [~] toolbar (grupos/flyouts §4.2), LTS (§4.3, G = Criar grupo), status bar (§3.4), Bandeja (§4.4) com `register_section`, menus (§4.5) com nomes do Apêndice A, menu do app, Configurações
 7. [x] `hide.py` (inclui glTF Variants; 82 painéis da região UI, filhos primeiro)
 8. [x] `build_all.sh` reprodutível a partir da sequência de passos do spike + `driver.py` (larguras) + `set_view`/`fit_lens`
-9. [~] **lacunas visuais do `shell_v3` (CRITICA_R3_SKETCHUP §3), nesta ordem**:
-   1. ícones **originais** (PNG via `bpy.utils.previews` + patch do resolvedor, já provado) com as metáforas do SketchUp para: Linha (lápis vermelho), Apagar (borracha), Pintura (balde), Fita métrica (fita), Empurrar/puxar (caixa + seta vermelha para cima), Mover (cruz de 4 setas vermelhas), Girar (setas circulares vermelhas), Escala (caixa + seta diagonal), Transferidor, Aplicar zoom (lupa), Panorâmica (mão), Órbita (setas orbitais vermelhas); estilo plano navy/ciano + vermelho; os demais seguem recoloridos;
+9. [x] **lacunas visuais do `shell_v3` (CRITICA_R3_SKETCHUP §3), nesta ordem**:
+   1. [x] ícones **originais** (PNG via `bpy.utils.previews` + patch do resolvedor, já provado) com as metáforas do SketchUp para: Linha (lápis vermelho), Apagar (borracha), Pintura (balde), Fita métrica (fita), Empurrar/puxar (caixa + seta vermelha para cima), Mover (cruz de 4 setas vermelhas), Girar (setas circulares vermelhas), Escala (caixa + seta diagonal), Transferidor, Aplicar zoom (lupa), Panorâmica (mão), Órbita (setas orbitais vermelhas); estilo plano navy/ciano + vermelho; os demais seguem recoloridos;
    2. [x] **luz P0**: recalibrar para frente ≈255, lateral ≈210, topo ≈160 (topo mais escuro) — sondas;
    3. [x] dica da status bar com "Option" (`modifiers.label()`);
-   4. reduzir a faixa vazia de ~20 pt da aba invisível (largura da aba no tema); se não der, desvio aceito;
-   5. caixa Medidas com borda fina clara, alinhada à direita (`wcol_text` outline);
-   6. ícones próprios de pino (cinza-claro) e ⓘ (preto fino);
+   4. [x] reduzir a faixa vazia de ~20 pt da aba invisível (largura da aba no tema); se não der, desvio aceito;
+   5. [x] caixa Medidas com borda fina clara, alinhada à direita (`wcol_text` outline);
+   6. [x] ícones próprios de pino (cinza-claro) e ⓘ (preto fino);
    7. [x] Bandeja **toda fechada** na 1ª abertura (o spike abre Estilos expandido);
    8. [x] arestas pretas (0,0,0) ~1 pt conferidas pela sonda em tamanho real; **filtro por atributo**: diagonal desenhada pelo usuário numa face plana fica visível (AC-LIN-2 visual)
 10. [ ] exportar sem modificadores (P1); Estilos aba Editar, Arestas traseiras, Raio X com cópia de verso desligada (P1)
@@ -39,3 +39,12 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - Menus por existência: ids esperados de F/G (ajustar nos donos ou aqui): `su.select_all/select_none/select_invert/delete_selected/delete_guides/hide/unhide_*/make_group/make_component/close_group/reverse_faces/explode/cut/copy/paste/paste_in_place/intersect_faces/export`, `su.view_standard(view)`, `su.set_projection(persp)`, `su.view_previous/view_next/zoom_window/zoom_extents_cmd/position_camera_cmd`, `su.settings`, `su.model_info`, `su.shortcuts`, `su.open_full_blender`, `su.toggle_scene_tabs`.
 - Bandeja: F/G registram `tray.register_section(10, "entity", "tray.entity", fn)`, `(20, "materials", "tray.materials", …)`, `(30, "components", "tray.components", …, 'P1')`, `(50, "scenes", "tray.scenes", …, 'P1')` (rótulos `tray.*` já registrados por D; hoje há marcadores de lugar).
 - Testes: `tests/sketchup_mode/unit/test_d_shell.py` (12), `tests/sketchup_mode/gui/scn_d.py` (layout + sondas de cor). Print: `doc/sketchup_mode/screens/casca_v4.png`.
+
+## Entrega 2 — lacunas visuais 9.1, 9.4, 9.5, 9.6
+- 9.1: ícones ORIGINAIS vetoriais (`tools/sketchup_mode/build_icons_draw.py` → `icons/su.draw.<nome>.dat`, alça `draw.<nome>`): Selecionar, Linha, Apagar, Pintura, Fita métrica, Empurrar/puxar, Mover, Girar, Escala, Transferidor, Aplicar zoom, Panorâmica, Órbita (+ `_dim`). PNG via `bpy.utils.previews` foi descartado: o Blender desenha previews a 16 px na toolbar; o formato de geometria `.dat` (o mesmo dos ícones do Blender) escala sem perda. Enquadrados em 13–87 % como os ícones do Blender; cores pré-invertidas (tema claro).
+- 9.4: a faixa da aba sumiu — o painel único da Bandeja limpa `PanelType.category` no 1º desenho (`self.bl_category = ""`); sem categoria, a região não reserva a faixa de abas (`region_panels_collect_categories`). `active_panel_category` passa a "UNSUPPORTED".
+- 9.5: caixa Medidas branca com borda fina clara (`wcol_text.outline` 190,190,198), à direita (já do porte).
+- 9.6: pino cinza-claro e ⓘ preto fino próprios (`draw.ui_pin`/`draw.ui_info`, margem maior para caber ao lado do texto de 11 pt).
+- Arestas em monitor 1× (1080p externo): linha suavizada de 1 px saía cinza (102) → `lineSmooth` desligado quando `pixel_size < 1.5`; sonda preta (0,0,0) nos dois monitores.
+- Seções P2 da Bandeja (Sombras, Suavizar arestas, Estruturador): o pedido do coordenador conflita com a §4.4 (decisão R2 #9: seções P2 não aparecem). Implementado atrás de `tray.SHOW_P2_SECTIONS` (padrão **False**, como no plano); com True aparecem como linhas acinzentadas "Em breve".
+- Print: `doc/sketchup_mode/screens/casca_v5.png`.

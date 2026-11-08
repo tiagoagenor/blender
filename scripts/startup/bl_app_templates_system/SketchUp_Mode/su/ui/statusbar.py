@@ -68,10 +68,9 @@ def _vcb_owner(context):
 
 def draw(self, context):
     layout = self.layout
-    row = layout.row(align=True)
+    row = layout.row(align=False)
     row.label(text="", icon_value=icons.ui_icon("pin"))
     row.label(text="", icon_value=icons.ui_icon("info"))
-    row.separator(factor=0.5, type='LINE')
     row.label(text=hint_text())
     layout.separator_spacer()
     layout.separator_spacer()

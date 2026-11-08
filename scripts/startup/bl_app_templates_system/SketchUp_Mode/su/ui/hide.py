@@ -28,7 +28,8 @@ def _all_subclasses(c):
 def hide_ui_panels():
     victims = [c for c in set(_all_subclasses(bpy.types.Panel))
                if getattr(c, "bl_space_type", "") == 'VIEW_3D' and getattr(c, "bl_region_type", "") == 'UI'
-               and getattr(c, "bl_category", "") != TRAY_CATEGORY and getattr(c, "is_registered", False)]
+               and getattr(c, "bl_category", "") != TRAY_CATEGORY and not c.__name__.startswith("SU_")
+               and getattr(c, "is_registered", False)]
     victims.sort(key=lambda c: 0 if getattr(c, "bl_parent_id", "") else 1)     # children first
     n = 0
     for c in victims:

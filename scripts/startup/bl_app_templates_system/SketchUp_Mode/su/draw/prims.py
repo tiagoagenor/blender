@@ -66,6 +66,10 @@ def _polyline(coords, rgba, width, prim='LINES'):
     sh = shaders.builtin('POLYLINE_UNIFORM_COLOR')
     sh.uniform_float("viewportSize", gpu.state.viewport_get()[2:])
     sh.uniform_float("lineWidth", _lw(width))
+    try:
+        sh.uniform_bool("lineSmooth", True)      # the shader is shared with draw/edges (crisp on 1×)
+    except Exception:
+        pass
     sh.uniform_float("color", tuple(rgba))
     batch_for_shader(sh, prim, {"pos": coords}).draw(sh)
 

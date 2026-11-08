@@ -62,3 +62,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - **A**: atalho K → `su.style_toggle(prop="show_back_edges")` no keymap `Window`.
 - `prims.dashed_many(dc, segs, rgba, width, dash_px, gap_px, *, depth)` adicionada (extensão compatível do contrato).
 - Print: `doc/sketchup_mode/screens/casca_v7.png` (Estilos › Editar aberto, arestas traseiras ligadas).
+
+## Entrega 5 — verso sem iluminação
+- Bug (print da Linha): face no chão vista de cima saía escura (≈101,110,116) porque o Workbench ilumina a cópia invertida com a mesma luz relativa à câmera (topo = 0,63). No SketchUp o verso mantém a cor (#A4B2BB).
+- Correção: camada `backfaces` (ordem 15, em `draw/display_gn.py`) redesenha os triângulos de verso de cada documento SEM luz, na cor sRGB do material de verso (`su_back_mat` → slot; padrão 1), com culling de face e teste de profundidade sobre a cópia GN (que continua dando profundidade e o desligamento no Raio X). Verso pintado (F) aparece na cor exata, sem tom azul.
+- Sondas: verso visto de cima (162,176,185) ≈ #A4B2BB ±8 (nova sonda no scn_d); frentes continuam 255/209/159.
+- Print: `doc/sketchup_mode/screens/casca_v8.png`.

@@ -14,6 +14,12 @@ copies, 3D text, imports). `set_back_copy(False)` hides the copy (Raio X).
 Until F's core/materials.py exists, `ensure()` also gives slot-less objects the two default materials
 ("Padrão" white, "Padrão (verso)" #A4B2BB) so the slice shows the right colours; once F is loaded this
 fallback is skipped and F's `ensure_slots` (subscribed to the same events) owns the slots.
+
+Back faces are UNLIT (layer BACKFACES=15, `draw_back_faces`): Workbench lights the flipped copy with the
+camera-relative light, which made a ground face seen from above as dark as a box top (≈101,110,116).
+In SketchUp a back face keeps its colour (#A4B2BB → ≈164,178,187). The layer redraws the back-facing
+triangles of every document flat in their back material colour (sRGB of `diffuse_color`), depth-tested
+over the GN copy (which still provides depth, culling and the Raio X switch).
 """
 
 import sys
@@ -21,6 +27,10 @@ import sys
 import bpy
 
 from .. import colors, constants, events
+from . import handlers
+
+LAYER_BACKFACES = 15        # between AXES (10) and EDGES (20)
+_back_cache = {}            # mesh pointer -> (key, batch)
 
 ORDER = 230
 
@@ -149,10 +159,100 @@ def _on_doc(doc_key=None, **_kw):
         ensure(obj)
 
 
+def _srgb(c):
+    c = max(0.0, min(1.0, c))
+    return 12.92 * c if c <= 0.0031308 else 1.055 * c ** (1.0 / 2.4) - 0.055
+
+
+def _material_colors(me):
+    out = []
+    for m in me.materials:
+        if m is None:
+            out.append(colors.rgba(colors.FACE_BACK))
+        else:
+            d = m.diffuse_color
+            out.append((_srgb(d[0]), _srgb(d[1]), _srgb(d[2]), 1.0))
+    return out
+
+
+def back_triangles(me):
+    """(positions (3n,3) local, reversed winding; colours (3n,4) sRGB) of the mesh's back sides."""
+    import numpy as np
+    me.calc_loop_triangles()
+    n = len(me.loop_triangles)
+    if not n:
+        return None, None
+    tv = np.empty(n * 3, np.int32)
+    me.loop_triangles.foreach_get("vertices", tv)
+    tp = np.empty(n, np.int32)
+    me.loop_triangles.foreach_get("polygon_index", tp)
+    co = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    tv = tv.reshape(-1, 3)[:, (0, 2, 1)]                     # reversed winding = the back side
+    pos = co[tv.reshape(-1)]
+    slot = np.full(len(me.polygons), constants.SLOT_DEFAULT_BACK, np.int32)
+    a = me.attributes.get(ATTR_BACK)
+    if a is not None and a.domain == 'FACE' and a.data_type == 'INT' and len(me.polygons):
+        a.data.foreach_get("value", slot)
+    mats = _material_colors(me)
+    palette = np.array(mats + [colors.rgba(colors.FACE_BACK)], np.float32)
+    s = slot[tp]
+    s = np.where((s >= 0) & (s < len(mats)), s, len(mats))
+    col = np.repeat(palette[s], 3, axis=0)
+    return pos, col
+
+
+def draw_back_faces(dc):
+    if not _state["back_copy"] or dc.rv3d is None:
+        return
+    import gpu
+    from gpu_extras.batch import batch_for_shader
+    from . import edges, shaders
+    sh = shaders.builtin('FLAT_COLOR')
+    visible = {o.name for o in dc.context.visible_objects if o.type == 'MESH'}
+    items = []
+    for inst in dc.context.view_layer.depsgraph.object_instances:
+        ob = inst.object
+        if ob.type != 'MESH':
+            continue
+        orig = ob.original
+        if not inst.is_instance and orig.name not in visible:
+            continue
+        me = orig.data
+        if me is None or not len(me.polygons):
+            continue
+        key = (len(me.vertices), len(me.polygons), edges._serial.get(me.name, 0),
+               tuple(tuple(round(x, 4) for x in c) for c in _material_colors(me)))
+        ent = _back_cache.get(me.as_pointer())
+        if ent is None or ent[0] != key:
+            pos, col = back_triangles(me)
+            ent = (key, batch_for_shader(sh, 'TRIS', {"pos": pos, "color": col}) if pos is not None else None)
+            _back_cache[me.as_pointer()] = ent
+        if ent[1] is not None:
+            items.append((inst.matrix_world.copy(), ent[1]))
+    if not items:
+        return
+    gpu.state.depth_test_set('LESS_EQUAL')
+    gpu.state.depth_mask_set(False)
+    gpu.state.face_culling_set('BACK')
+    with shaders.offset_projection(dc.rv3d, 0.3):
+        for M, b in items:
+            with gpu.matrix.push_pop():
+                gpu.matrix.multiply_matrix(M)
+                b.draw(sh)
+    gpu.state.face_culling_set('NONE')
+    gpu.state.depth_test_set('NONE')
+
+
 def register():
     events.subscribe("load", _on_load, order=300)
     events.subscribe("doc", _on_doc, order=300)
+    if not bpy.app.background:
+        handlers.add_layer("backfaces", 'POST_VIEW', LAYER_BACKFACES, draw_back_faces)
 
 
 def unregister():
-    pass
+    if not bpy.app.background:
+        handlers.remove_layer("backfaces")
+    _back_cache.clear()

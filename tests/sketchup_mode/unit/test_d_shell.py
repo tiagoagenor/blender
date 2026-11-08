@@ -186,6 +186,11 @@ class TestDisplayGN(unittest.TestCase):
             gn.set_back_copy(False)
             self.assertFalse(ob.modifiers[gn.MODIFIER].show_viewport)
             gn.set_back_copy(True)
+            # unlit back faces: reversed winding, colour = sRGB of the back material (#A4B2BB)
+            pos, col = gn.back_triangles(ob.data)
+            self.assertEqual(len(pos), 3 * len(ob.data.loop_triangles))
+            r, g, b, _a = (round(x * 255) for x in col[0])
+            self.assertEqual((r, g, b), (164, 178, 187))
         finally:
             me = ob.data
             bpy.data.objects.remove(ob)

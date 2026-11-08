@@ -220,7 +220,7 @@ def run(h):
     probe("face front (−Y)", (1.3, 0.0, 0.4), (255, 255, 255))
     probe("face side (+X)", (2.0, 1.5, 0.75), (210, 210, 210))
     probe("face top", (1.6, 2.2, 1.5), (160, 160, 160))
-    c = probe("back face up (rectangle)", (-2.7, -1.4, 0.0))
+    c = probe("back face up (rectangle) ≈ #A4B2BB unlit", (-2.7, -1.4, 0.0), (164, 178, 187), 8)
     h.check("back face blue-grey (b > r)", c is not None and c[2] > c[0] + 6, c)
     e = probe("edge black (box vertical)", (2.0, 0.0, 0.75), darkest=True)
     h.check("edge black", e is not None and max(e) <= 40, e)

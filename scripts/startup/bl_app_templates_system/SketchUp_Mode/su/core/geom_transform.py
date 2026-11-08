@@ -25,7 +25,7 @@ Copies: geometry is duplicated inside the same document (not welded); groups are
 
 import bmesh
 import bpy
-from mathutils import Matrix
+from mathutils import Matrix, Vector
 
 from .. import events
 from . import document, geom, selection
@@ -362,17 +362,26 @@ def _remove_tree(obj):
         bpy.data.meshes.remove(me)
 
 
-def mirror(refs, plane_co, plane_normal, copy):
-    """Virar (P1): reflect the refs in the plane (world). Returns the session (finished)."""
-    n = plane_normal.normalized()
+def mirror(refs, plane_co, plane_normal, copy, verts=None, undo_key="tool.su.flip.undo"):
+    """Virar (P1): reflect the refs in the plane (world) as ONE undo step. Faces that move rigidly are
+    reversed so normals stay outward (geometry folds where a partial selection bends faces).
+    Returns the finished session."""
+    n = Vector(plane_normal).normalized()
     R = Matrix.Identity(4)
     for i in range(3):
         for j in range(3):
             R[i][j] = (1.0 if i == j else 0.0) - 2.0 * n[i] * n[j]
-    T = Matrix.Translation(plane_co) @ R @ Matrix.Translation(-plane_co)
-    s = TransformSession(refs, copy=copy, fold='FREE')
+    c = Vector(plane_co)
+    T = Matrix.Translation(c) @ R @ Matrix.Translation(-c)
+    s = TransformSession(refs, copy=copy, fold='AUTO', verts=verts)
     s.set_matrix(T)
-    for p in s.parts:
-        geom.reverse_faces(p.doc.bm, p.copy_faces if copy else p.faces)
-    s.finish("tool.su.flip.undo")
+    reverse_rigid(s)
+    s.finish(undo_key)
     return s
+
+
+def reverse_rigid(s):
+    """Reverse the faces whose vertices all moved (after a mirroring matrix)."""
+    for p in s.parts:
+        vs = set(p.verts)
+        geom.reverse_faces(p.doc.bm, [f for f in p.doc.bm.faces if all(v in vs for v in f.verts)])

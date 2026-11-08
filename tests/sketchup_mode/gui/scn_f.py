@@ -403,6 +403,11 @@ def run(h):
     yield 0.4
     h.glide(*h.world_xy((23, 0, 0)))
     yield 0.4
+    path = os.path.join(h.out_dir, "f_girar_transferidor.png")     # protractor under the cursor, mid-rotation
+    bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=2)
+    h.screenshot(path)
+    shots.append(path)
+    yield 0.3
     h.type_text("90")
     yield 0.8
     bm = doc.bm
@@ -444,6 +449,73 @@ def run(h):
     h.check("AC-ESC-1 corner `2` doubles the copy (6×8×5 → 12×16×10)", ext == (12.0, 16.0, 10.0), ext)
     h.check("Escala: faces planar", sum(1 for f in bm.faces if not geom.is_planar(f, 1e-4)) == 0)
     yield from shot("f_escala")
+
+    # 11. Comandos: G = Criar grupo (componente até P1), Informações da entidade, menu de contexto,
+    #     Ocultar / Reexibir, Explodir (AF-8 via the menu's operator)
+    rv3d.view_location = V((4, 3, 1.5))
+    rv3d.view_distance = 24.0
+    new_box()
+    yield 0.4
+    h.move(*h.region_xy(region, 0.85, 0.85))
+    h.key('SPACE', unicode=' ')
+    yield 0.4
+    top = h.world_xy((4, 3, 3))
+    h.click(*top)
+    h.click(*top)
+    h.click(*top)
+    yield 0.6
+    h.check("triple click → whole box", kinds() == (6, 12, 0), kinds())
+    h.key('G', unicode='g')
+    yield 0.6
+    objs = selection.objects()
+    h.check("G → Criar grupo (selection = the new group)", len(objs) == 1 and kinds() == (0, 0, 1), kinds())
+    h.check("G hint: components not available yet", h.state()["hint_key"] == "edit.component_is_group",
+            h.state()["hint_key"])
+    h.check("root emptied into the group", len(doc.bm.faces) == 0, len(doc.bm.faces))
+    tray.set_open("entity", True)
+    yield 0.4
+    yield from shot("f_criar_grupo")
+    # right click over the group: A's su.context_menu opens F's SU_MT_context
+    h.move(*top)
+    yield 0.2
+    h.event('RIGHTMOUSE', 'PRESS')
+    h.event('RIGHTMOUSE', 'RELEASE')
+    yield 0.6
+    path = os.path.join(h.out_dir, "f_menu_contexto.png")
+    bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=2)
+    h.screenshot(path)
+    shots.append(path)
+    yield 0.3
+    h.key('ESC')
+    yield 0.4
+    # double click enters the group, Esc leaves it
+    h.click(*top)
+    h.click(*top)
+    yield 0.6
+    ec = importlib.import_module(su.__name__ + ".core.edit_context")
+    h.check("double click on the group enters it", len(ec.stack()) == 1, [o.name for o in ec.stack()])
+    h.key('ESC')
+    yield 0.4
+    h.check("Esc leaves the group", len(ec.stack()) == 0, [o.name for o in ec.stack()])
+    h.click(*top)
+    yield 0.5
+    with ctx():
+        bpy.ops.su.hide()
+    yield 0.4
+    g = objs[0]
+    gname = g.name
+    h.check("Ocultar hides the group", g.hide_get(), g.hide_get())
+    with ctx():
+        bpy.ops.su.unhide_all()
+    yield 0.4
+    h.check("Reexibir ▸ Tudo shows it again", not g.hide_get(), g.hide_get())
+    selection.set([selection.Ref(gname, "OBJECT", 0)])
+    with ctx():
+        bpy.ops.su.explode()
+    yield 0.5
+    h.check("Explodir → geometry back in the model", len(doc.bm.faces) == 6 and bpy.data.objects.get(gname) is None,
+            len(doc.bm.faces))
+    tray.set_open("entity", False)
 
     h.key('SPACE', unicode=' ')
     yield 0.4

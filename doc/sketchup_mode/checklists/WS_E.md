@@ -4,13 +4,13 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 
 ## Sub-checklist §9.2-E
 1. [x] Retângulo (fatia) → completo (em pé automático, sobre face, porta)
-2. [ ] Linha (assumida de A): duplo clique encerra, cura, plano vertical, redigitar
+2. [x] Linha (assumida de A): duplo clique encerra, cura, plano vertical, redigitar
 3. [x] Círculo e Polígono (gizmo de plano, lados, curva-entidade, laterais suaves)
 4. [x] Arco de dois pontos
 5. [x] Empurrar/puxar (skip de faces em movimento, encaixe, perfurar, esticar, Option, duplo clique, redigitar, recusa em superfície)
 6. [x] Equidistância (com furo; duplo clique)
-7. [~] Siga-me (caminho pré-selecionado; moldura)
-8. [ ] P1: Arco (centro)
+7. [x] Siga-me (caminho pré-selecionado; moldura)
+8. [x] P1: Arco (centro)
 
 ## Aceite e comandos (referência)
 - **Aceite**: AC-LIN-1..7, AC-RET-1..5, AC-CIR-1..4, AC-ARC-1, AC-EMP-1..7, AC-EQD-1..3, AC-SIG-1..2.
@@ -28,3 +28,9 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - **Equidistância** (`core/geom_extrude.offset_faces`): laços com mitra; a face lógica é apagada e as regiões refeitas com `rebuild_face` (anel externo, miolo com furos, anéis dos furos); furo aberto continua aberto. Distância pelo cursor (distância ao contorno, + dentro). Sem eliminação de sobreposições em formas côncavas (P1); Cmd não faz nada ainda.
 - **Siga-me** (`core/geom_extrude.follow_me`): varredura com mitra (projeção do anel no plano bissetor); caminho aberto mantém o perfil como tampa inicial e cria a final; caminho fechado remove o perfil. Faces "extras" que os laços novos fecham (ex.: tampa interna da moldura) são removidas. Falta: AC-SIG-2 na GUI; caminho pelo perímetro com Cmd+clique (o pairar sobre uma face já usa o perímetro).
 - GUI `scn_e`: partes `retangulo`, `casa` (ROTEIRO Parte 1 passos 1, 2, 6–9 + Cmd+Z ×6 / Cmd+Shift+Z ×6), `encaixe` (AC-EMP-3, cilindro AC-CIR-1/2). Prints em `doc/sketchup_mode/screens/e_*.png`.
+- **Linha** (assumida de A após M-A): redigitar = restaura o snapshot de antes do último segmento e o redesenha (funciona também quando o segmento fechou uma face). AC-LIN-2..5 em `test_e_line.py`; GUI `scn_e:linha` (cura do topo; laço vertical com setas + Medidas, fora dos eixos).
+- **Empurrar/puxar — valor digitado** segue o lado para onde o mouse foi: a distância viva; se a inferência a deixou em 0 (cursor preso num ponto da própria face), o lado do cursor na tela em relação à face (projeção da normal); sem movimento, para o lado da câmera. Negativo inverte. A face clicada é pulada pelo raio já antes do 1º movimento (`moving_faces` inicial).
+- **Siga-me**: face pré-selecionada = caminho pelo perímetro; Cmd + aresta = perímetro da face que ela delimita (prefere a face cujo perímetro toca o perfil). GUI `scn_e:sigame` (moldura AC-SIG-2).
+- **Arco (centro)** P1 (`su.arc`): centro (plano como no Círculo), início (raio), fim (ângulo, ajuste de 15°); `Ns` antes do ponto inicial (na etapa do ângulo o esquema é `angle`).
+- **Para A**: as setas só chegam ao despacho com a ferramenta em operação (não há item de keymap para setas com a ferramenta ociosa) → "↑ antes do clique" (AC-CIR-4, Retângulo) só funciona headless; na GUI a seta depois do 1º clique funciona.
+- GUI `scn_e:parte2` = ROTEIRO_CASA Parte 2 B1–B6 (Equidistância, Excluir de F, paredes 2,8, porta passante + raio até y = 5,85).

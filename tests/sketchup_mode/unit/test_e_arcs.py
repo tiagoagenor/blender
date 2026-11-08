@@ -79,5 +79,41 @@ class TestArc2(ToolCase):
         self.assertEqual(testing.doc_stats()["edges"], 0)
 
 
+class TestArcCenter(ToolCase):
+    TOOL = "su.arc"
+
+    def test_quarter_by_clicks(self):
+        testing.click((0, 0, 0))
+        testing.click((1, 0, 0))
+        self.assertEqual(testing.state_dump()["vcb_label_key"], "vcb.angle")
+        testing.move((0.02, 1, 0))                    # ~88.9°: snaps to 90°
+        r = testing.click((0.02, 1, 0))
+        self.assertIs(r, base.Result.IDLE)
+        st = self.stats()
+        self.assertEqual((st["verts"], st["edges"]), (13, 12))
+        bb = st["bbox"]
+        self.assertAlmostEqual(bb[1][0], 1.0, places=5)
+        self.assertAlmostEqual(bb[1][1], 1.0, places=5)
+        self.assertAlmostEqual(bb[0][0], 0.0, places=5)
+        self.assertEqual(self.steps(), 1)
+
+    def test_typed_radius_and_angle(self):
+        testing.click((0, 0, 0))
+        testing.move((1, 0, 0))
+        testing.type_text("6s")                       # segments (before the start point: schema 'arc')
+        testing.type_text("2")                        # radius
+        testing.move((0, -1, 0))                      # clockwise side
+        testing.type_text("180")
+        st = self.stats()
+        self.assertEqual(st["edges"], 6)
+        bb = st["bbox"]
+        self.assertAlmostEqual(bb[0][1], -2.0, places=5)
+        self.assertAlmostEqual(bb[0][0], -2.0, places=5)
+        bm = document.root().bm
+        lay = geom.layers(bm)
+        meta = entities.get_curve_meta(document.root(), next(iter({e[lay.curve] for e in bm.edges})))
+        self.assertAlmostEqual(meta["radius"], 2.0, places=5)
+
+
 if __name__ == "__main__":
     unittest.main()

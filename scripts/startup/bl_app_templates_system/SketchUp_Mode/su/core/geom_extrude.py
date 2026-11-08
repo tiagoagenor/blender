@@ -359,7 +359,7 @@ class PushPullSession:
         self._normal = faces[0].normal.copy()
         self.keep_original = keep_original
         self.distance = 0.0
-        self.moving_faces = set()
+        self.moving_faces = set(self.face_ids)    # before the first move the face itself is skipped by the ray
         self.result = None
         self.soft_ids, self.curve_map, self._metas = self._curve_plan(doc, faces)
         doc.begin()

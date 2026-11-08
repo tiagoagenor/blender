@@ -1,9 +1,14 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Scenario E (owner: E): drawing tools in the real GUI with simulated input.
 
-Parts (all by default; `shot.sh scn_e:<part>` / SU_SHOT_VARIANT runs one):
+Parts (all by default; `shot.sh scn_e:<part>` / SU_SHOT_VARIANT=a,b runs some):
   retangulo  R, origin, mouse into +X+Y, `8;6` Enter → floor 8×6 (V4 A4 F1, normal −Z); retype `5;4`
              (Ajustar); standing rectangle (AC-RET-2); Esc leaves nothing; Cmd+Z.
+  casa       ROTEIRO_CASA Parte 1 passos 1, 2, 6–9 + Cmd+Z ×6 / Cmd+Shift+Z ×6.
+  encaixe    AC-EMP-3 (encaixe), AC-CIR-1/2 (cilindro suave).
+  linha      AC-LIN-3 (cura do topo), AC-LIN-5 (laço vertical por eixos + Medidas).
+  sigame     AC-SIG-2 (moldura: topo pré-selecionado = perímetro).
+  parte2     ROTEIRO_CASA Parte 2 (paredes de 15 cm, porta passante).
 Screenshots: <out_dir>/e_*.png (copied to doc/sketchup_mode/screens/ by hand, reduced with sips)."""
 
 import os
@@ -352,7 +357,242 @@ def part_encaixe(h):
     h.check("single window (no popup)", len(bpy.context.window_manager.windows) == 1)
 
 
-PARTS = [("retangulo", part_retangulo), ("casa", part_casa), ("encaixe", part_encaixe)]
+def _mod(h, name):
+    import importlib
+    return importlib.import_module(h.su.__name__ + "." + name)
+
+
+def _fresh(h, center, dist):
+    """Empty model as an undo step, view framed on `center`."""
+    h.testing.reset_model()
+    _mod(h, "core.undo").push("undo.init")
+    _frame_view(h, center, dist)
+    yield 0.5
+
+
+def _box(h, w, d, height, at=(0.0, 0.0)):
+    x, y = at
+    yield from _draw_rect(h, (x, y, 0.0), (x + 1.0, y + 1.0, 0.0), "{};{}".format(w, d))
+    yield from _pull(h, (x + w * 0.5 + 0.1, y + d * 0.5 + 0.1, 0.0), (x + w * 0.5 + 0.1, y + d * 0.5 + 0.1, 0.5),
+                     height)
+
+
+def _select_face_and_delete(h, at):
+    """Selecionar (Espaço) + clique na face + ⌫ (tools of F); kernel fallback when F's tool is missing."""
+    base = _mod(h, "tools.base")
+    if "su.select" in base.TOOLS:
+        h.key('SPACE')
+        yield 0.3
+        h.glide(*h.world_xy(at))
+        yield 0.4
+        h.click()
+        yield 0.3
+        h.key('BACK_SPACE')
+        yield 0.5
+        return
+    h.log("su.select missing: kernel erase")
+    doc = _mod(h, "core.document").root()
+    ge = _mod(h, "core.geom_extrude")
+    from mathutils import Vector
+    _mod(h, "core.geom").erase_faces(doc.bm, ge.faces_at(doc.bm, Vector(at)))
+    doc.write(undo_key="test")
+    yield 0.3
+
+
+def part_linha(h):
+    """Linha (E): AC-LIN-3 cura (Excluir o topo, redesenhar uma aresta) e AC-LIN-5 laço vertical por eixos."""
+    yield from _fresh(h, (3.0, 2.0, 1.0), 16.0)
+    yield from _box(h, 4, 4, "2")
+    h.check("caixa 4×4×2", _counts(h) == (8, 12, 6), _counts(h))
+    yield from _select_face_and_delete(h, (2.2, 2.3, 2.0))
+    h.check("topo excluído: V8 A12 F5", _counts(h) == (8, 12, 5), _counts(h))
+    h.glide(*h.world_xy((1.0, 0.0, 2.0)))
+    yield 0.3
+    h.key('L', unicode='l')
+    yield 0.3
+    h.glide(*h.world_xy((0.0, 0.0, 2.0)))
+    yield 0.4
+    h.check("ponto de extremidade", h.state()["inference"]["kind"] == "ENDPOINT", h.state()["inference"])
+    h.click()
+    yield 0.3
+    h.glide(*h.world_xy((4.0, 0.0, 2.0)))
+    yield 0.4
+    h.click()
+    yield 0.5
+    h.check("AC-LIN-3: a face do topo volta (V8 A12 F6)", _counts(h) == (8, 12, 6), _counts(h))
+    h.check("a cadeia terminou", not h.state()["running"])
+    doc = _mod(h, "core.document").root()
+    top = [f for f in doc.bm.faces if abs(f.calc_center_median().z - 2.0) < 1e-6]
+    h.check("topo curado com normal +Z", len(top) == 1 and top[0].normal.z > 0.99,
+            [tuple(f.normal) for f in top])
+    # AC-LIN-5: vertical loop beside the box (y = −2, off the axes), with arrow locks + Medidas
+    h.glide(*h.world_xy((6.0, -2.0, 0.0)))
+    yield 0.4
+    h.click()
+    yield 0.3
+    for arrow, toward, text in (('UP_ARROW', (6.0, -2.0, 1.0), "2"), ('RIGHT_ARROW', (7.0, -2.0, 2.0), "2"),
+                                ('UP_ARROW', (8.0, -2.0, 1.0), "2")):
+        h.key(arrow)
+        yield 0.2
+        h.glide(*h.world_xy(toward))
+        yield 0.4
+        h.log("linha toward", toward, h.state()["inference"]["linear"], h.state()["locks"])
+        h.type_text(text)
+        yield 0.5
+    if h.state()["locks"]["axis"]:
+        h.key('UP_ARROW')                      # unlock
+        yield 0.2
+    h.glide(*h.world_xy((6.0, -2.0, 0.0)))
+    yield 0.4
+    h.click()
+    yield 0.5
+    h.check("AC-LIN-5: laço vertical → face (V12 A16 F7)", _counts(h) == (12, 16, 7), _counts(h))
+    st = h.stats()
+    h.check("nenhuma face não plana", st.get("non_planar") == 0, st.get("non_planar"))
+    yield from _settle(h)
+    h.screenshot(os.path.join(h.out_dir, "e_linha_cura.png"))
+    yield 0.2
+
+
+def part_sigame(h):
+    """Siga-me (E): AC-SIG-2 moldura — perfil 0,1×0,1 fora da parede, caminho = topo pré-selecionado
+    (perímetro); depois o mesmo com Cmd+clique numa aresta do topo de outra caixa."""
+    yield from _fresh(h, (2.0, 0.0, 2.0), 7.0)
+    yield from _box(h, 4, 4, "2")
+    # profile: R with → (normal red: plane x = const) from the top edge at x = 1
+    h.glide(*h.world_xy((1.5, 0.0, 2.0)))
+    yield 0.3
+    h.key('R', unicode='r')
+    yield 0.3
+    h.glide(*h.world_xy((1.0, 0.0, 2.0)))
+    yield 0.4
+    h.log("profile start inference", h.state()["inference"])
+    h.click()
+    yield 0.3
+    h.key('RIGHT_ARROW')                       # after the click: the tool modal gets the arrow
+    yield 0.2
+    h.glide(*h.world_xy((1.0, -0.3, 2.3)))
+    yield 0.4
+    h.type_text("0,1;0,1")
+    yield 0.6
+    doc = _mod(h, "core.document").root()
+    prof = [f for f in doc.bm.faces if abs(f.normal.x) > 0.99 and abs(f.calc_center_median().x - 1.0) < 0.02]
+    h.check("perfil 0,1×0,1 vertical em x ≈ 1", len(prof) == 1 and abs(prof[0].calc_area() - 0.01) < 1e-5,
+            [(tuple(f.calc_center_median()), f.calc_area()) for f in prof])
+    # preselect the top face (its perimeter is the path)
+    _frame_view(h, (2.0, 2.0, 1.0), 14.0)
+    yield 0.4
+    base = _mod(h, "tools.base")
+    if "su.select" in base.TOOLS:
+        h.key('SPACE')
+        yield 0.3
+        h.glide(*h.world_xy((2.0, 2.0, 2.0)))
+        yield 0.4
+        h.click()
+        yield 0.4
+    else:
+        sel = _mod(h, "core.selection")
+        top = _mod(h, "core.geom_extrude").faces_at(doc.bm, __import__("mathutils").Vector((2, 2, 2)))[0]
+        doc.bm.faces.index_update()
+        sel.set([sel.Ref(doc.key, 'FACE', top.index)])
+    h.check("topo selecionado", bool(h.state()["selection"]), h.state()["selection"])
+    base.set_workspace_tool("su.followme")
+    yield 0.4
+    h.check("Siga-me ativo", h.state()["tool"] == "su.followme", h.state()["tool"])
+    _frame_view(h, (1.0, 0.0, 2.0), 3.0)
+    yield 0.4
+    h.glide(*h.world_xy((1.0, -0.05, 2.05)))
+    yield 0.4
+    h.click()
+    yield 0.8
+    tops = [f for f in doc.bm.faces if abs(f.calc_center_median().z - 2.1) < 1e-4]
+    h.log("moldura tops", [(tuple(round(c, 3) for c in f.calc_center_median()), round(f.normal.z, 3)) for f in tops])
+    h.check("AC-SIG-2: moldura fechada (tampas superiores para fora)",
+            len(tops) >= 4 and all(f.normal.z > 0.99 for f in tops), len(tops))
+    h.check("perfil removido (caminho fechado)", not [f for f in doc.bm.faces if abs(f.normal.x) > 0.99
+                                                      and abs(f.calc_center_median().x - 1.0) < 0.02], "")
+    st = h.stats()
+    h.check("nenhuma face não plana", st.get("non_planar") == 0 and st.get("validate") == [], st.get("validate"))
+    _frame_view(h, (2.0, 2.0, 1.2), 12.0)
+    yield 0.4
+    yield from _settle(h)
+    h.screenshot(os.path.join(h.out_dir, "e_sigame_moldura.png"))
+    yield 0.2
+
+
+def part_parte2(h):
+    """ROTEIRO_CASA Parte 2: B1 piso, B2 Equidistância 0,15, B3 Excluir a face interna, B4 paredes 2,8,
+    B5 porta na fachada externa, B6 porta empurrada 0,15 = abertura passante."""
+    yield from _fresh(h, (4.0, 3.0, 1.2), 18.0)
+    s0 = bpy.context.scene.su_undo_serial
+    yield from _draw_rect(h, (0.0, 0.0, 0.0), (3.0, 2.0, 0.0), "8;6")
+    h.check("B1: piso V4 A4 F1", _counts(h) == (4, 4, 1), _counts(h))
+    h.glide(*h.world_xy((4.0, 0.5, 0.0)))
+    yield 0.3
+    h.key('F', unicode='f')
+    yield 0.3
+    d = h.state()
+    h.check("F activates su.offset", d["tool"] == "su.offset", d["tool"])
+    h.glide(*h.world_xy((4.0, 0.3, 0.0)))
+    yield 0.4
+    h.click()
+    yield 0.3
+    h.glide(*h.world_xy((4.0, 0.8, 0.0)))
+    yield 0.4
+    h.type_text("0,15")
+    yield 0.6
+    h.check("B2: anel + face interna V8 A8 F2", _counts(h) == (8, 8, 2), _counts(h))
+    yield from _select_face_and_delete(h, (4.0, 3.0, 0.0))
+    h.check("B3: só o anel V8 A8 F1", _counts(h) == (8, 8, 1), _counts(h))
+    _frame_view(h, (4.0, 1.0, 0.5), 10.0)
+    yield 0.4
+    yield from _pull(h, (4.0, 0.075, 0.0), (4.0, 0.075, 1.0), "2,8")
+    h.check("B4: paredes ocas V16 A24 F10", _counts(h) == (16, 24, 10), _counts(h))
+    _frame_view(h, (4.0, 3.0, 1.2), 18.0)
+    yield 0.4
+    h.glide(*h.world_xy((3.0, 0.0, 0.5)))
+    yield 0.3
+    h.key('R', unicode='r')
+    yield 0.3
+    h.glide(*h.world_xy((4.0, 0.0, 0.0)))
+    yield 0.4
+    h.check("ponto central da aresta inferior externa", h.state()["inference"]["kind"] == "MIDPOINT",
+            h.state()["inference"])
+    h.click()
+    yield 0.3
+    h.glide(*h.world_xy((4.6, 0.0, 1.2)))
+    yield 0.4
+    h.type_text("1;2,1")
+    yield 0.6
+    h.check("B5: porta na fachada (+1 face)", _counts(h)[2] == 11, _counts(h))
+    yield from _pull(h, (4.55, 0.0, 1.0), (4.55, 0.4, 1.0), "0,15")
+    doc = _mod(h, "core.document").root()
+    ge = _mod(h, "core.geom_extrude")
+    from mathutils import Vector
+    blocked = [f for f in doc.bm.faces if ge.point_in_face(f, Vector((4.5, 0.0, 1.0)))
+               or ge.point_in_face(f, Vector((4.5, 0.15, 1.0)))]
+    h.check("B6: abertura passante (porta e parede interna somem)", blocked == [], len(blocked))
+    sp = _mod(h, "core.spatial")
+    import importlib
+    tc = _mod(h, "tools.base").tool_context()
+    hit = sp.ray_cast(tc, Vector((4.5, -1.0, 1.0)), Vector((0.0, 1.0, 0.0)))
+    h.check("raio (4,5; −1; 1) +Y atinge a parede interna de trás em y = 5,85",
+            hit.ok and abs(hit.point.y - 5.85) < 1e-4, hit.point if hit.ok else None)
+    st = h.stats()
+    h.check("nenhuma face não plana", st.get("non_planar") == 0 and st.get("validate") == [], st.get("validate"))
+    h.check("6 undo steps (B1..B6)", bpy.context.scene.su_undo_serial - s0 == 6, bpy.context.scene.su_undo_serial - s0)
+    _frame_view(h, (4.0, 3.0, 1.0), 13.0)
+    yield 0.4
+    yield from _settle(h)
+    h.screenshot(os.path.join(h.out_dir, "e_casa_parte2.png"))
+    yield 0.2
+    d = h.state()
+    h.check("no active object", d["active_object"] is None, d["active_object"])
+    h.check("single window (no popup)", len(bpy.context.window_manager.windows) == 1)
+
+
+PARTS = [("retangulo", part_retangulo), ("casa", part_casa), ("encaixe", part_encaixe), ("linha", part_linha),
+         ("sigame", part_sigame), ("parte2", part_parte2)]
 
 
 def run(h):
@@ -360,9 +600,9 @@ def run(h):
     h.check("3D viewport present", area is not None)
     if area is None:
         return
-    variant = os.environ.get("SU_SHOT_VARIANT", "")
+    variant = [v for v in os.environ.get("SU_SHOT_VARIANT", "").split(",") if v]
     for name, fn in PARTS:
-        if variant and name != variant:
+        if variant and name not in variant:
             continue
         h.log("---- part", name)
         yield from fn(h)

@@ -116,6 +116,41 @@ class TestFollowMe(PPCase):
         self.assertFalse(base.DISPATCH.running)
         self.assertEqual(self.stats()["faces"], 6)
 
+    def moulding_setup(self):
+        self.box(4, 4, "2")
+        self.add([(1, 0, 2), (1, -0.1, 2), (1, -0.1, 2.1), (1, 0, 2.1)], True)
+
+    def assert_moulding(self):
+        bm = document.root().bm
+        tops = [f for f in bm.faces if abs(f.calc_center_median().z - 2.1) < 1e-6]
+        self.assertEqual(len(tops), 5)
+        self.assertTrue(all(f.normal.z > 0.99 for f in tops))
+        self.assertEqual(self.stats()["non_planar"], 0)
+
+    def test_preselected_face_perimeter(self):
+        self.moulding_setup()
+        doc = document.root()
+        top = geom_extrude.faces_at(doc.bm, V(2, 2, 2))[0]
+        doc.bm.faces.index_update()
+        selection.set([selection.Ref(doc.key, 'FACE', top.index)])
+        testing.dispatch(testing.ev('MOUSEMOVE', 'NOTHING'), FM, testing.pt(0, 0, 1))
+        r = testing.click(face_inf((1, -0.05, 2.05)))
+        self.assertIs(r, base.Result.IDLE)
+        self.assert_moulding()
+
+    def test_cmd_edge_gives_perimeter(self):
+        self.moulding_setup()
+        testing.dispatch(testing.ev('MOUSEMOVE', 'NOTHING'), FM, testing.pt(0, 0, 1))
+        testing.click(face_inf((1, -0.05, 2.05)))
+        doc = document.root()
+        bm = doc.bm
+        bm.edges.ensure_lookup_table()
+        e = next(e for e in bm.edges if all(abs(v.co.z - 2) < 1e-6 and abs(v.co.x - 4) < 1e-6 for v in e.verts))
+        inf = testing.pt(4, 2, 2, kind="ON_EDGE", ref_edge=(doc.key, e.index), doc_key=doc.key)
+        testing.click(inf, alt_action=True)
+        self.assertFalse(base.DISPATCH.running)
+        self.assert_moulding()
+
 
 if __name__ == "__main__":
     unittest.main()

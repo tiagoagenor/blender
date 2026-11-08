@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """Siga-me (owner: E). PLANO.md §6.2 (AC-SIG-1..2).
 
-Pre-selected path: select the path edges (e.g. the top edges of a box), activate Siga-me and click the
-profile face → the profile is swept along them at once. Without a pre-selection: click the profile face,
-then hover the path — an edge (its chain of connected edges, through vertices with two edges) or a face
-(its perimeter: the SketchUp Cmd/Alt use) — the path is highlighted in red; click to sweep. Mitred joints;
+Pre-selected path: select the path edges (e.g. the top edges of a box) — or a face, whose perimeter is the
+path —, activate Siga-me and click the profile face → the profile is swept at once. Without a
+pre-selection: click the profile face, then hover the path — an edge (its chain of connected edges, through
+vertices with two edges) or a face (its perimeter) — the path is highlighted in red; click to sweep.
+Cmd (the SketchUp Alt/Cmd "face perimeter as path"): with Cmd held, an edge under the cursor gives the
+perimeter of a face it bounds (not the profile) instead of the edge chain. Mitred joints;
 an open path keeps the profile as the start cap and adds the end cap; a closed path removes the profile
 face (moldura). Sweeping along a curve (arc/circle) gives a smooth surface. One undo step. Kernel:
 core/geom_extrude.follow_me.
@@ -107,7 +109,14 @@ class FollowMeTool(BaseTool):
             self.hover_key = key
         return doc, idx
 
-    def _path_at(self, inf):
+    def _perimeter(self, bm, f):
+        from ..core import entities
+        lf = entities.logical_face(bm, f)
+        if self.profile is not None and bm.faces[self.profile] in lf.faces:
+            return None
+        return [v.co.copy() for v in lf.outer_loop], True, False
+
+    def _path_at(self, inf, perimeter=False):
         """(points, closed, smooth) of the path under the cursor (edge chain or face perimeter)."""
         from ..core import entities, geom, geom_extrude
         doc = self.doc
@@ -119,6 +128,15 @@ class FollowMeTool(BaseTool):
         edges = None
         if inf.ref_edge is not None and inf.ref_edge[0] == doc.key and inf.ref_edge[1] < len(bm.edges):
             e = bm.edges[inf.ref_edge[1]]
+            if perimeter:
+                # prefer the face whose perimeter touches the profile (the path the profile sits on)
+                prof = {v.co.to_tuple(5) for v in bm.faces[self.profile].verts}
+                ranked = sorted(e.link_faces, key=lambda f: not any(
+                    v.co.to_tuple(5) in prof for v in entities.logical_face(bm, f).outer_loop))
+                for f in ranked:
+                    r = self._perimeter(bm, f)
+                    if r is not None:
+                        return r
             edges = entities.curve_edges(bm, e) if e[geom.layers(bm).curve] else chain_from_edge(bm, e)
         elif inf.elem and inf.elem[0] == "FACE" and inf.elem[1] < len(bm.faces):
             f = bm.faces[inf.elem[1]]
@@ -154,7 +172,10 @@ class FollowMeTool(BaseTool):
             self._set_path(self._path_at(inf))
 
     def move(self, tc, ev, inf):
-        self.hover(tc, inf)
+        if self.profile is None:
+            self._profile_at(face_pick(tc, (ev.x, ev.y), inf))
+        else:
+            self._set_path(self._path_at(inf, perimeter=ev.alt_action))
         return Result.RUNNING if self.profile is not None else Result.IDLE
 
     # -- clicks --------------------------------------------------------------------------------------
@@ -164,9 +185,16 @@ class FollowMeTool(BaseTool):
         if sel is None:
             return None
         ids = [r.index for r in sel.get() if r.kind == 'EDGE' and r.doc_key == doc.key]
-        if not ids:
-            return None
         bm = doc.bm
+        if not ids:
+            fids = [r.index for r in sel.get() if r.kind == 'FACE' and r.doc_key == doc.key]
+            bm.faces.ensure_lookup_table()
+            for i in fids:
+                if i < len(bm.faces):
+                    r = self._perimeter(bm, bm.faces[i])
+                    if r is not None:
+                        return r
+            return None
         bm.edges.ensure_lookup_table()
         es = [bm.edges[i] for i in ids if i < len(bm.edges)]
         r = geom_extrude.order_path([(e.verts[0].co, e.verts[1].co) for e in es])
@@ -183,7 +211,7 @@ class FollowMeTool(BaseTool):
                 return self._commit(pre)
             self.update_status()
             return Result.RUNNING
-        path = self._path_at(inf)
+        path = self._path_at(inf, perimeter=ev.alt_action)
         if path is None:
             return Result.RUNNING
         return self._commit(path)

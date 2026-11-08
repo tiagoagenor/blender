@@ -99,6 +99,8 @@ class PushPullTool(BaseTool):
         self.hover_polys = []        # world polygons of the highlighted logical face
         self.copy = False
         self._snap = None
+        self.screen_side = 0
+        self._s0 = self._sdir = None
 
     # -- status --------------------------------------------------------------------------------------
     def _shown(self):
@@ -187,12 +189,34 @@ class PushPullTool(BaseTool):
         self.doc, self.face_idx = doc, idx
         self.p0 = Vector(inf.point)
         self.copy = bool(ev.copy)
+        self._screen_setup(tc, ev)
         self._snap = geom_extrude.snapshot(doc)
         from ..core import entities
         lf = entities.logical_face(bm, f)
         self.session = geom_extrude.PushPullSession(doc, lf, keep_original=self.copy)
         self.distance = 0.0
         return True
+
+    def _screen_setup(self, tc, ev):
+        """Screen direction of +n at the clicked point (to know which side the mouse went to)."""
+        self.screen_side = 0
+        self._s0 = self._sdir = None
+        if tc is None or tc.region is None or tc.rv3d is None:
+            return
+        from ..core import viewutil
+        a = viewutil.project(tc.region, tc.rv3d, self.p0)
+        b = viewutil.project(tc.region, tc.rv3d, self.p0 + self.n * 0.1)
+        if a is None or b is None or (b - a).length < 1e-3:
+            return
+        self._s0, self._sdir = (float(ev.x), float(ev.y)), (b - a).normalized()
+
+    def _screen_track(self, ev):
+        if self._sdir is None or ev is None:
+            return
+        dx, dy = ev.x - self._s0[0], ev.y - self._s0[1]
+        t = dx * self._sdir.x + dy * self._sdir.y
+        if abs(t) >= 3.0:                      # physical px: a real move to one side of the face
+            self.screen_side = 1 if t > 0 else -1
 
     def _track(self, inf):
         if inf is None or inf.kind == "NONE":
@@ -215,6 +239,7 @@ class PushPullTool(BaseTool):
         if self.session is None:
             self._highlight(face_pick(tc, (ev.x, ev.y), inf))
             return Result.IDLE
+        self._screen_track(ev)
         self._track(inf)
         self.update_status()
         return Result.RUNNING
@@ -243,13 +268,19 @@ class PushPullTool(BaseTool):
 
     # -- Measurements --------------------------------------------------------------------------------
     def _typed(self, values, current):
-        """Signed distance along n from a typed value (sign follows the current direction)."""
+        """Signed distance along n from a typed value: the side the mouse went to (the live distance, or
+        — when the inference kept it at 0, e.g. snapped to a point of the face — the side of the cursor
+        relative to the face on screen); with no movement, towards the viewer. A negative value flips."""
         if not values or values[0] is None or kind_of(values[0]) not in LENGTH_KINDS:
             return None
         v = value_of(values[0])
-        shown = current * (self.n.dot(self.u_view))
-        direction = self.u_view if abs(shown) <= constants.GEOM_TOL else (self.u_view if shown > 0 else -self.u_view)
-        return v * direction.dot(self.n)
+        if abs(current) > constants.GEOM_TOL:
+            s = 1.0 if current > 0 else -1.0
+        elif getattr(self, "screen_side", 0):
+            s = float(self.screen_side)
+        else:
+            s = 1.0 if self.u_view.dot(self.n) > 0 else -1.0
+        return v * s
 
     def vcb(self, tc, values):
         if self.session is None:

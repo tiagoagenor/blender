@@ -201,6 +201,7 @@ class TestHouse(PPCase):
         self.assertIn(2.1, self.logical_areas())
         self.pull((4.5, 0, 1), (4.5, 0.1, 1), "0,15")
         self.assertEqual(self.counts(), (16, 24, 10))
+        self.assertEqual(self.stats()["bbox"][0][1], 0.0)          # the recess goes INTO the wall
         self.assertIn(47.85, self.logical_areas())                # floor with a notch
         bm = document.root().bm
         lay = geom.layers(bm)
@@ -211,6 +212,23 @@ class TestHouse(PPCase):
         self.assertEqual(len(door), 1)
         self.assertLess(door[0].normal.y, -0.99)                  # door front still faces outside
         self.assertEqual(self.steps(), 4)
+
+    def test_typed_value_follows_mouse_side_when_snapped(self):
+        """The inference kept the distance at 0 (cursor snapped to a point of the door): the typed value
+        follows the side of the cursor on screen (+Y = into the wall here), not the viewer side."""
+        from mathutils import Vector as V2
+        self.box()
+        self.door()
+        testing.click(face_inf((4.5, 0, 1)))
+        ctrl = base.controller(PP)
+        ctrl._s0, ctrl._sdir = (100.0, 100.0), V2((0.0, 1.0))      # +n (−Y) goes up on screen
+        testing.dispatch(testing.ev('MOUSEMOVE', 'NOTHING', 100, 60), None, testing.pt(4.5, 0, 1))
+        self.assertEqual(ctrl.screen_side, -1)                     # mouse went down = −n = +Y (inside)
+        testing.type_text("0,15")
+        bb = self.stats()["bbox"]
+        self.assertEqual(bb[0][1], 0.0)                            # nothing outside the wall
+        bm = document.root().bm
+        self.assertEqual(len([f for f in bm.faces if abs(f.calc_center_median().y - 0.15) < 1e-6]), 1)
 
     def test_steps_8_9_window(self):
         self.box()

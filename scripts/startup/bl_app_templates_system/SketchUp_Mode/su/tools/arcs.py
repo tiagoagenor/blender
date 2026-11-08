@@ -27,6 +27,11 @@ STRINGS = {
     "tool.su.arc2.hint_end": {"pt_BR": "Selecione o ponto final.", "en": "Select end point."},
     "tool.su.arc2.hint_bulge": {"pt_BR": "Selecione a curvatura.", "en": "Select bulge."},
     "tool.su.arc2.undo": {"pt_BR": "Arco", "en": "Arc"},
+    "tool.su.arc.label": {"pt_BR": "Arco", "en": "Arc"},
+    "tool.su.arc.hint_center": {"pt_BR": "Selecione o ponto central.", "en": "Select center point."},
+    "tool.su.arc.hint_start": {"pt_BR": "Selecione o ponto inicial.", "en": "Select start point."},
+    "tool.su.arc.hint_end": {"pt_BR": "Selecione o ponto final ou digite o ângulo.", "en": "Select end point or enter angle."},
+    "tool.su.arc.undo": {"pt_BR": "Arco", "en": "Arc"},
 }
 
 
@@ -315,6 +320,208 @@ class Arc2Tool(BaseTool):
             return
         pts, _c, _r = arc_geometry(self.a, self.b, self.bulge, self.n, self.segments)
         prims.lines(dc, list(zip(pts, pts[1:])), rgba)
+
+
+ARC_TOOL_ID = "su.arc"
+_ARC_META = ToolMeta(id=ARC_TOOL_ID, label_key="tool.su.arc.label", icon="ops.gpencil.primitive_arc",
+                     cursor='PAINT_CROSS', vcb_label_key="vcb.radius", vcb_schema="arc", priority='P1')
+
+
+@tool(_ARC_META)
+class ArcCenterTool(BaseTool):
+    """Arco (centro), P1: center (plane gizmo like Círculo: arrow = normal lock, face, ground), start point
+    (radius; typed length), end point (angle; 15° snap; typed angle in degrees). `Ns` = segments, typed
+    before the start point (the angle step parses angles only)."""
+
+    def __init__(self):
+        self.segments = constants.ARC_SEGMENTS
+        self.reset()
+
+    def reset(self):
+        self.c = None
+        self.n = None
+        self.s = None             # start point
+        self.cur = None
+        self.angle = 0.0
+        self._schema("arc", "vcb.radius")
+
+    def _schema(self, schema, label):
+        from dataclasses import replace
+        self.meta = replace(_ARC_META, vcb_schema=schema, vcb_label_key=label)   # instance override
+
+    def update_status(self):
+        if self.c is None:
+            STATE.set_hint("tool.su.arc.hint_center")
+            STATE.set_vcb("vcb.radius", STATE.vcb_value)
+        elif self.s is None:
+            STATE.set_hint("tool.su.arc.hint_start")
+            r = (self.cur - self.c).length if self.cur is not None else 0.0
+            STATE.set_vcb("vcb.radius", fmt_length(r))
+        else:
+            STATE.set_hint("tool.su.arc.hint_end")
+            from .base import units
+            u = registry.optional("core.units")
+            txt = u.format_angle(abs(self.angle), units()) if u is not None else "{:.1f}".format(math.degrees(abs(self.angle)))
+            STATE.set_vcb("vcb.angle", txt)
+
+    def activate(self, tc):
+        self.reset()
+        self.update_status()
+
+    def deactivate(self, tc):
+        self.cancel(tc)
+
+    def cancel(self, tc):
+        self.reset()
+        STATE.locks.axis = ''
+        self.update_status()
+
+    def query_ctx(self, tc, xy):
+        if self.c is None:
+            return make_query(tc, xy, locks=Locks())
+        return make_query(tc, xy, plane=(self.c.copy(), self.n.copy()), locks=Locks())
+
+    def _plane_at(self, inf):
+        lk = {"AXIS_X": 0, "AXIS_Y": 1, "AXIS_Z": 2}.get(STATE.locks.axis)
+        if lk is not None:
+            return AXES[lk].copy()
+        if inf is not None and inf.kind == "ON_FACE" and inf.normal is not None:
+            return Vector(inf.normal).normalized()
+        return AXES[2].copy()
+
+    def _on_plane(self, inf):
+        p = _point(inf)
+        if p is None:
+            return None
+        return p - self.n * (p - self.c).dot(self.n)
+
+    def _angle_to(self, p):
+        r0 = (self.s - self.c).normalized()
+        v = p - self.c
+        if v.length <= constants.GEOM_TOL:
+            return self.angle
+        a = math.atan2(self.n.cross(r0).dot(v), r0.dot(v))
+        # continuous sweep: keep the previous turn direction past ±180°
+        if self.angle > math.pi / 2 and a < 0:
+            a += 2 * math.pi
+        elif self.angle < -math.pi / 2 and a > 0:
+            a -= 2 * math.pi
+        from .base import units
+        u = units()
+        if getattr(u, "angle_snap", True):
+            step = math.radians(getattr(u, "angle_snap_deg", 15.0) or 15.0)
+            k = round(a / step)
+            if abs(a - k * step) <= math.radians(1.5):
+                a = k * step
+        return a
+
+    def move(self, tc, ev, inf):
+        if self.c is None:
+            return Result.IDLE
+        p = self._on_plane(inf)
+        if p is not None:
+            self.cur = p
+            if self.s is not None:
+                self.angle = self._angle_to(p)
+        self.update_status()
+        return Result.RUNNING
+
+    def press(self, tc, ev, inf):
+        p = _point(inf)
+        if self.c is None:
+            if p is None:
+                return Result.IDLE
+            self.c, self.n = p, self._plane_at(inf)
+            self.cur = p
+            self.update_status()
+            return Result.RUNNING
+        q = self._on_plane(inf)
+        if self.s is None:
+            if q is None or (q - self.c).length <= constants.GEOM_TOL:
+                return Result.RUNNING
+            self._set_start(q)
+            return Result.RUNNING
+        if q is not None:
+            self.angle = self._angle_to(q)
+        if abs(self.angle) <= 1e-6:
+            return Result.RUNNING
+        return self._commit(self.angle)
+
+    def _set_start(self, q):
+        self.s = q
+        self.angle = 0.0
+        self._schema("angle", "vcb.angle")
+        self.update_status()
+
+    def release(self, tc, ev, inf):
+        return Result.RUNNING if self.c is not None else Result.IDLE
+
+    def vcb(self, tc, values):
+        if self.c is None or not values or values[0] is None:
+            return Result.PASS
+        v = values[0]
+        k = kind_of(v)
+        if k in {"SEGMENTS", "SIDES"}:
+            n = int(value_of(v))
+            if n >= 1:
+                self.segments = n
+            return Result.RUNNING
+        if self.s is None:
+            if k not in {"LENGTH", "RADIUS", "NUMBER"} or value_of(v) <= constants.GEOM_TOL:
+                STATE.vcb_error = True
+                return Result.RUNNING
+            d = (self.cur - self.c) if self.cur is not None else Vector()
+            if d.length <= constants.GEOM_TOL:
+                d = self.n.orthogonal()
+            self._set_start(self.c + d.normalized() * value_of(v))
+            return Result.RUNNING
+        if k not in {"ANGLE", "NUMBER"}:
+            STATE.vcb_error = True
+            return Result.RUNNING
+        a = value_of(v) if k == "ANGLE" else math.radians(value_of(v))
+        if self.angle < 0:
+            a = -abs(a)
+        if abs(a) <= 1e-6:
+            STATE.vcb_error = True
+            return Result.RUNNING
+        return self._commit(a)
+
+    def _commit(self, angle):
+        from ..core import entities, geom
+        doc = _document()
+        mw = doc.world()
+        inv = mw.inverted()
+        n = self.n if angle > 0 else -self.n
+        pts = geom.arc_points(self.c, n, self.s, abs(angle), self.segments)
+        cid = entities.new_curve_id(doc)
+        geom.add_polyline(doc.bm, [inv @ p for p in pts], False, curve_id=cid)
+        sc = mw.to_scale()
+        k = ((abs(sc.x) + abs(sc.y) + abs(sc.z)) / 3.0) or 1.0
+        c = inv @ self.c
+        nl = (mw.to_3x3().inverted().transposed() @ self.n).normalized()
+        entities.set_curve_meta(doc, cid, {"kind": "arc", "center": [c.x, c.y, c.z], "normal": [nl.x, nl.y, nl.z],
+                                           "radius": (self.s - self.c).length / k, "segments": self.segments})
+        doc.write(undo_key="tool.su.arc.undo")
+        self.reset()
+        STATE.locks.axis = ''
+        self.update_status()
+        return Result.IDLE
+
+    def draw_3d(self, dc):
+        prims = registry.optional("draw.prims")
+        if prims is None or self.c is None:
+            return
+        rgba = colors.rgba(colors.EDGE, 1.0)
+        if self.s is None:
+            if self.cur is not None:
+                prims.dotted(dc, self.c, self.cur, rgba)
+            return
+        prims.dotted(dc, self.c, self.s, rgba)
+        if abs(self.angle) > 1e-6:
+            from ..core import geom
+            n = self.n if self.angle > 0 else -self.n
+            pts = geom.arc_points(self.c, n, self.s, abs(self.angle), self.segments)
+            prims.lines(dc, list(zip(pts, pts[1:])), rgba)
 
 
 def register():

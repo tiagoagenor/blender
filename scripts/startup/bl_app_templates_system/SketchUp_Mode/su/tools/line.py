@@ -1,11 +1,12 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Linha (owner: A during the vertical slice → E after M-A). PLANO.md §6.2.
+"""Linha (owner: E since M-A; written by A for the vertical slice). PLANO.md §6.2 (AC-LIN-1..7).
 
 Click-move-click (or press-drag-release) chain of segments. Each segment = one undo step
 (Document.write). Measurements: length along the rubber band direction while drawing; after the chain
-ends, typing a length re-sizes the last segment ("Ajustar"). A segment that creates a face (closing a
-loop or splitting a face) ends the chain; clicking the anchor point again (double click) ends it; Esc
-cancels the pending segment. Inference comes from C (anchor passed for axis/linear inference).
+ends, typing a length re-sizes the last segment ("Ajustar": the geometry before the segment is restored
+and the segment redrawn, so it also works when the segment closed a face). A segment that creates a face
+(closing a loop, splitting a face, healing a face over an existing edge) ends the chain; clicking the
+anchor point again (double click) ends it; Esc cancels the pending segment. Inference comes from C (anchor passed for axis/linear inference).
 
 Consumes: B document.active()/root(), geom.add_edge/auto_faces, Document.write; C via base helpers.
 """
@@ -57,7 +58,7 @@ class LineTool(BaseTool):
         self.anchor = None          # world point the pending segment starts at
         self.current = None         # world point under the cursor (last inference)
         self.linear = ""
-        self.last_seg = None        # (doc_key, start world, end world) of the last committed segment
+        self.last_seg = None        # (doc_key, start world, end world, snapshot before) of the last segment
 
     # -- status --------------------------------------------------------------------------------------
     def update_status(self):
@@ -74,6 +75,13 @@ class LineTool(BaseTool):
 
     def deactivate(self, tc):
         self.cancel(tc)
+        self._drop_last()
+
+    def _drop_last(self):
+        if self.last_seg is not None:
+            from ..core import geom_extrude
+            geom_extrude.release(self.last_seg[3])
+            self.last_seg = None
 
     def cancel(self, tc):
         self.anchor = None
@@ -145,40 +153,38 @@ class LineTool(BaseTool):
         return self._commit(tc, self.anchor + d.normalized() * length)
 
     def _reapply(self, values):
-        """Re-size the last segment (idle retype): moves its end vertex when it is a dangling end."""
+        """Re-size the last segment (idle retype): restore the geometry from before it, redraw it."""
         if self.last_seg is None or not values or kind_of(values[0]) not in LENGTH_KINDS:
             return False
         length = value_of(values[0])
-        _key, a, b = self.last_seg
+        key, a, b, snap = self.last_seg
         if length <= 0.0 or (b - a).length <= constants.GEOM_TOL:
             return False
+        from ..core import geom, geom_extrude
         doc = _document()
-        inv = doc.world().inverted()
-        old = inv @ b
-        new_world = a + (b - a).normalized() * length
-        vert = None
-        for v in doc.bm.verts:
-            if (v.co - old).length <= constants.GEOM_TOL * 10:
-                vert = v
-                break
-        if vert is None or len(vert.link_edges) != 1 or vert.link_faces:
+        if doc.key != key:
             return False
-        vert.co = inv @ new_world
+        new_world = a + (b - a).normalized() * length
+        geom_extrude.restore(doc, snap)
+        inv = doc.world().inverted()
+        geom.add_edge(doc.bm, inv @ a, inv @ new_world)
         doc.write(undo_key=None)
-        self.last_seg = (_key, a, new_world)
+        self.last_seg = (key, a, new_world, snap)
         STATE.set_vcb(self.meta.vcb_label_key, fmt_length(length))
         return True
 
     # -- geometry ------------------------------------------------------------------------------------
     def _commit(self, tc, p):
-        from ..core import geom
+        from ..core import geom, geom_extrude
         doc = _document()
+        self._drop_last()
+        snap = geom_extrude.snapshot(doc)
         inv = doc.world().inverted()
         a, b = inv @ self.anchor, inv @ p
         res = geom.add_edge(doc.bm, a, b)          # welds, splits crossings and runs auto_faces
         faces = [f for f in res.new_faces if f.is_valid]
         doc.write(undo_key="tool.su.line.undo")
-        self.last_seg = (doc.key, Vector(self.anchor), Vector(p))
+        self.last_seg = (doc.key, Vector(self.anchor), Vector(p), snap)
         STATE.last_action = LastAction(tool_id=TOOL_ID, schema=self.meta.vcb_schema, reapply=self._reapply)
         STATE.set_vcb(self.meta.vcb_label_key, fmt_length((p - self.anchor).length))
         if faces:

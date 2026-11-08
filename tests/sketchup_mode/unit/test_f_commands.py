@@ -40,11 +40,13 @@ class TestCommands(FCase):
         g2 = edit_ops.make_group()
         self.assertEqual(g1.obj.parent, g2.obj)
 
-    def test_make_component_is_group_with_hint(self):
+    def test_make_component_is_real_component(self):
         selection.set([Ref(self.key, FACE, self.face((4, 3, 3)))])
-        self.assertTrue(edit_ops.make_component())
-        self.assertEqual(state.STATE.hint_key, "edit.component_is_group")
-        self.assertEqual(len(selection.objects()), 1)
+        c = edit_ops.make_component()
+        self.assertIsNotNone(c)
+        self.assertTrue(document.is_component(c.obj))
+        self.assertTrue(document.definition_name(c.obj).startswith("Componente"))
+        self.assertEqual(selection.get(), {Ref(c.key, OBJECT, 0)})
 
     def test_explode(self):
         top = self.face((4, 3, 3))

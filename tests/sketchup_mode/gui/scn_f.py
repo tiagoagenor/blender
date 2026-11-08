@@ -468,9 +468,11 @@ def run(h):
     h.key('G', unicode='g')
     yield 0.6
     objs = selection.objects()
-    h.check("G → Criar grupo (selection = the new group)", len(objs) == 1 and kinds() == (0, 0, 1), kinds())
-    h.check("G hint: components not available yet", h.state()["hint_key"] == "edit.component_is_group",
-            h.state()["hint_key"])
+    h.check("G → Criar componente (selection = the new instance)", len(objs) == 1 and kinds() == (0, 0, 1), kinds())
+    document = importlib.import_module(su.__name__ + ".core.document")
+    h.check("G makes a real component (Componente#N)", len(objs) == 1 and document.is_component(objs[0])
+            and document.definition_name(objs[0]).startswith("Componente"),
+            [document.definition_name(o) for o in objs])
     h.check("root emptied into the group", len(doc.bm.faces) == 0, len(doc.bm.faces))
     tray.set_open("entity", True)
     yield 0.4
@@ -573,6 +575,62 @@ def run(h):
     yield 0.4
     hl = doc.bm.faces.layers.bool.get(sel_tool.HIDDEN_FACE)
     h.check("Reexibir ▸ Tudo shows the face again", not any(f[hl] for f in doc.bm.faces) if hl else True)
+
+    # 14. Componentes: G → component; Mover+Option copy shares the definition; Componentes tray → place
+    document = importlib.import_module(su.__name__ + ".core.document")
+    rv3d.view_location = V((10, 3, 1.5))
+    rv3d.view_distance = 40.0
+    new_box()
+    yield 0.4
+    h.move(*h.region_xy(region, 0.85, 0.85))
+    h.key('SPACE', unicode=' ')
+    yield 0.3
+    top = h.world_xy((4, 3, 3))
+    h.click(*top)
+    h.click(*top)
+    h.click(*top)
+    yield 0.5
+    h.key('G', unicode='g')
+    yield 0.6
+    inst = selection.objects()
+    h.check("G → component instance", len(inst) == 1 and document.is_component(inst[0]),
+            [o.name for o in inst])
+    if inst:
+        defname = inst[0].data.name
+        h.move(*h.region_xy(region, 0.85, 0.85))
+        h.key('M', unicode='m')
+        yield 0.4
+        h.click(*h.world_xy((0, 0, 0)))
+        yield 0.3
+        h.key('RIGHT_ARROW')
+        h.glide(*h.world_xy((5, 0, 0)))
+        yield 0.3
+        h.key('LEFT_ALT')
+        yield 0.3
+        h.type_text("10")
+        yield 0.8
+        h.check("Mover+Option copy of an instance shares the definition",
+                len(document.instances(defname)) == 2, [o.name for o in document.instances(defname)])
+        tray.set_open("components", True)
+        tray.set_open("entity", True)
+        yield 0.3
+        with ctx():
+            bpy.ops.su.place_component('INVOKE_DEFAULT', definition=defname)
+        yield 0.4
+        h.glide(*h.world_xy((22, 0, 0)))
+        yield 0.5
+        prev = [o for o in document.instances(defname) if not o.hide_get()]
+        h.check("Componentes → a preview instance follows the cursor", len(document.instances(defname)) == 3,
+                len(document.instances(defname)))
+        h.click(*h.world_xy((22, 0, 0)))
+        yield 0.8
+        placed = selection.objects()
+        h.check("click places it: 3 instances, selection = the new one",
+                len(document.instances(defname)) == 3 and len(placed) == 1 and document.is_component(placed[0]),
+                (len(document.instances(defname)), [o.name for o in placed]))
+        yield from shot("f_componentes")
+        tray.set_open("components", False)
+        tray.set_open("entity", False)
 
     h.key('SPACE', unicode=' ')
     yield 0.4

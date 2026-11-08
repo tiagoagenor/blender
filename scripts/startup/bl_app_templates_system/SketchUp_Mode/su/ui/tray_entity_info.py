@@ -26,6 +26,9 @@ STRINGS = {
     "edit.info.front": {"pt_BR": "Frente", "en": "Front"},
     "edit.info.back": {"pt_BR": "Verso", "en": "Back"},
     "edit.info.segments": {"pt_BR": "Segmentos", "en": "Segments"},
+    "edit.info.component": {"pt_BR": "Componente", "en": "Component"},
+    "edit.info.definition": {"pt_BR": "Definição", "en": "Definition"},
+    "edit.info.n_instances": {"pt_BR": "{n} instâncias no modelo", "en": "{n} instances in model"},
 }
 
 KIND_KEYS = {"FACE": "edit.info.face", "SURFACE": "edit.info.surface", "EDGE": "edit.info.edge",
@@ -89,6 +92,13 @@ def summarize(refs=None):
     return {"entities": ents, "area": area, "length": length}
 
 
+def _is_component(name):
+    document = registry.optional("core.document")
+    obj = bpy.data.objects.get(name)
+    return obj is not None and document is not None and hasattr(document, "is_component") \
+        and document.is_component(obj)
+
+
 def _materials_row(layout, key, idx):
     from ..core import document, materials
     doc = document.get_by_key(key)
@@ -109,11 +119,20 @@ def draw(layout, context):
     ents = s["entities"]
     if len(ents) == 1:
         kind, key, idx = ents[0]
-        layout.label(text=i18n.t(KIND_KEYS.get(kind, "edit.info.face")))
+        if not (kind == "OBJECT" and _is_component(key)):
+            layout.label(text=i18n.t(KIND_KEYS.get(kind, "edit.info.face")))
         col = layout.column(align=True)
         if kind == "OBJECT":
             obj = bpy.data.objects.get(key)
-            if obj is not None:
+            document = registry.optional("core.document")
+            if obj is not None and document is not None and hasattr(document, "is_component") \
+                    and document.is_component(obj):
+                col.label(text=i18n.t("edit.info.component"))
+                col.label(text="{}: {}".format(i18n.t("edit.info.definition"), document.definition_name(obj)))
+                col.prop(obj, "name", text=i18n.t("edit.info.name"))
+                n = len(document.instances(obj.data))
+                col.label(text=i18n.t("edit.info.n_instances", n=n))
+            elif obj is not None:
                 col.prop(obj, "name", text=i18n.t("edit.info.name"))
         elif kind in ("FACE", "SURFACE"):
             col.label(text="{}: {}".format(i18n.t("edit.info.area"), fmt_area(s["area"])))

@@ -455,19 +455,21 @@ def part_dimension(h):
     camera = _mod(h, "core.camera")
     guides = _mod(h, "core.guides")
     ann = _mod(h, "draw.annotations")
-    make_box(h)
+    make_box(h, (0, 0, 0), (8, 3, 2.5))
     guides.delete_guides()
     guides.data().dims.clear()
     camera.standard_view("ISO")
     camera.zoom_extents()
+    zoom_out(h, 2)
     yield 0.4
     set_tool(h, "su.dimension")
     yield 0.3
-    yield hover(h, (4.0, 1.2, 0.0))
-    h.check("hover the 3 m bottom edge of +X face: Em aresta", inf_kind(h) == "ON_EDGE", h.state()["inference"])
+    # AC-DIM-1: click the 3 m edge (x = 8, along Y), pull it out to +X
+    yield hover(h, (8.0, 1.2, 0.0))
+    h.check("hover the 3 m bottom edge of the +X face: Em aresta", inf_kind(h) == "ON_EDGE", h.state()["inference"])
     h.click()
     yield 0.3
-    yield hover(h, (5.2, 1.5, 0.0))
+    yield hover(h, (9.0, 1.5, 0.0))
     s0 = bpy.context.scene.su_undo_serial
     h.click()
     yield 0.4
@@ -477,44 +479,183 @@ def part_dimension(h):
     h.check("dimension pulled out (offset > 0.5 m)", len(d) == 1 and Vector(d[0].offset).length > 0.5,
             [tuple(x.offset) for x in d])
     h.check("1 undo step", bpy.context.scene.su_undo_serial - s0 == 1)
-    # 8 m edge (§12 step 13) by two points
-    make_box(h, (0, 0, 0), (8, 3, 2.5))
-    camera.zoom_extents()
-    yield 0.4
+    # 8 m front edge by its two endpoints, pulled towards the viewer (§12 step 13 → "8,00m")
     yield hover(h, (0.0, 0.0, 0.0))
     h.click()
     yield 0.2
     yield hover(h, (8.0, 0.0, 0.0))
     h.click()
     yield 0.2
-    yield hover(h, (4.0, -1.2, 0.0))
+    yield hover(h, (4.0, -1.0, 0.0))
     h.click()
     yield 0.4
     h.check("Dimensões: 8 m edge by two endpoints → 8,00m", len(d) == 2 and guides.dimension_text(1) == "8,00m",
             [guides.dimension_text(i) for i in range(len(d))])
+    # height 2,5 m (vertical edge at the front-right corner), pulled to −Y
+    yield hover(h, (8.0, 0.0, 0.7))
+    h.click()
+    yield 0.2
+    yield hover(h, (8.0, -0.8, 1.25))
+    h.click()
+    yield 0.4
+    h.check("Dimensões: vertical 2,5 m edge → 2,50m", len(d) == 3 and guides.dimension_text(2) == "2,50m",
+            [guides.dimension_text(i) for i in range(len(d))])
     h.park_mouse()
     yield 0.4
-    h.check("dimension texts drawn", ann.last_drawn()["dims"] == 2, ann.last_drawn())
-    save_screen(h, "g_cotas.png")
+    h.check("dimensions drawn on top (3)", ann.last_drawn()["dims"] == 3, ann.last_drawn())
+    save_screen(h, "g_cotas_v2.png")
     yield 0.2
     # AC-DIM-2 Cmd+Z removes it
     h.key('Z', oskey=True)
     yield 0.8
-    h.check("AC-DIM-2 Cmd+Z → the last dimension is gone", len(guides.data().dims) == 1, len(guides.data().dims))
+    h.check("AC-DIM-2 Cmd+Z → the last dimension is gone", len(guides.data().dims) == 2, len(guides.data().dims))
     h.key('Z', oskey=True, shift=True)
     yield 0.8
-    h.check("Cmd+Shift+Z → back", len(guides.data().dims) == 2, len(guides.data().dims))
-    # AC-DIM-3 legible while orbiting (screen-space text)
-    x, y = win_xy(h, (4.0, 1.5, 1.25))
-    _drag(h, 'MIDDLEMOUSE', x, y, -260, 90)
+    h.check("Cmd+Shift+Z → back", len(guides.data().dims) == 3, len(guides.data().dims))
+    # AC-DIM-3 legible while orbiting (screen-aligned text, on top)
+    x, y = win_xy(h, (4.0, 1.5, 2.5))
+    _drag(h, 'MIDDLEMOUSE', x, y, -220, 60)
     yield 0.5
     h.park_mouse()
     yield 0.3
-    h.check("AC-DIM-3 texts still drawn after orbiting", ann.last_drawn()["dims"] == 2, ann.last_drawn())
+    h.check("AC-DIM-3 texts still drawn after orbiting", ann.last_drawn()["dims"] == 3, ann.last_drawn())
     save_screen(h, "g_cotas_orbita.png")
     yield 0.2
     h.key('SPACE', unicode=' ')
     yield 0.3
+
+
+def part_p1(h):
+    camera = _mod(h, "core.camera")
+    guides = _mod(h, "core.guides")
+    make_box(h)
+    guides.delete_guides()
+    guides.data().dims.clear()
+    guides.data().texts.clear()
+    camera.pages().pages.clear()
+    camera.standard_view("ISO")
+    camera.zoom_extents()
+    zoom_out(h, 2)
+    yield 0.4
+    area, r, rv3d = view(h)
+    ov = dict(window=h.window(), area=area, region=r)
+
+    # Janela de zoom: a window around the +X face fills the view
+    with bpy.context.temp_override(**ov):
+        bpy.ops.su.zoom_window()
+    yield 0.3
+    h.check("Janela de zoom active", h.state()["tool"] == "su.zoom_window", h.state()["tool"])
+    a, b = win_xy(h, (4.0, 0.0, 0.0)), win_xy(h, (4.0, 3.0, 2.5))
+    d0 = camera.current().dist
+    _drag(h, 'LEFTMOUSE', min(a[0], b[0]), min(a[1], b[1]), abs(b[0] - a[0]), abs(b[1] - a[1]))
+    yield 0.5
+    c = proj(h, (4.0, 1.5, 1.25))
+    _a, r, _rv = view(h)
+    h.check("Janela de zoom: the window's centre comes to the centre (±25 px) and zooms in",
+            c is not None and (c - Vector((r.width / 2, r.height / 2))).length < 25 and camera.current().dist < d0,
+            (c, r.width / 2, r.height / 2, d0, camera.current().dist))
+    with bpy.context.temp_override(**ov):
+        bpy.ops.su.view_previous()
+    yield 0.3
+
+    # Posição da câmera: eye at 1,676 m over the clicked ground point, then `2` Enter
+    with bpy.context.temp_override(**ov):
+        bpy.ops.su.position_camera_cmd()
+    yield 0.3
+    h.check("Posição da câmera active", h.state()["tool"] == "su.position_camera", h.state()["tool"])
+    G = (2.0, -1.5, 0.0)
+    yield hover(h, G)
+    h.log("pos cam hover", h.state()["inference"], h.state()["tool"])
+    h.click()
+    yield 0.5
+    _pc = _mod(h, "tools.base").controller("su.position_camera")
+    h.log("pos cam after click", _pc.last, h.state()["running"], camera.current().eye(), _mod(h, "tools.base").DISPATCH.tool_id)
+    v = camera.current()
+    h.check("Posição da câmera: eye 1,676 m over the point, horizontal look",
+            (v.eye() - Vector((G[0], G[1], 1.676))).length < 0.05 and abs(v.fwd.z) < 1e-4, (v.eye(), v.fwd))
+    h.type_text("2")
+    yield 0.5
+    v = camera.current()
+    h.check("Altura dos olhos `2` → eye at 2 m", abs(v.eye().z - 2.0) < 1e-3, v.eye())
+    save_screen(h, "g_posicao_camera.png")
+    yield 0.2
+    camera.standard_view("ISO")
+    camera.zoom_extents()
+    zoom_out(h, 2)
+    yield 0.3
+
+    # Cenas + abas
+    with bpy.context.temp_override(**ov):
+        bpy.ops.su.scene_add()
+    yield 0.2
+    camera.standard_view("TOP")
+    camera.zoom_extents()
+    yield 0.2
+    with bpy.context.temp_override(**ov):
+        bpy.ops.su.scene_add()
+    yield 0.6
+    sp = view(h)[0].spaces.active
+    h.check("2 scenes; scene tabs shown (HEADER visible)", len(camera.pages().pages) == 2 and sp.show_region_header,
+            (len(camera.pages().pages), sp.show_region_header))
+    with bpy.context.temp_override(window=h.window(), area=view(h)[0], region=view(h)[1]):
+        bpy.ops.su.scene_go(index=0)
+    yield 0.5
+    h.check("Cena 1 restores its view (not the top view)", abs(fwd(h).z + 1.0) > 0.1, fwd(h))
+    save_screen(h, "g_cenas.png")
+    yield 0.2
+    h.key('Z', oskey=True)
+    yield 1.0
+    h.check("Cmd+Z removes the last scene", len(camera.pages().pages) == 1, len(camera.pages().pages))
+
+    # Texto (leader): click the 3 m edge, move out, click → "3,00m"; the edit dialog opens, Esc keeps it
+    camera.standard_view("ISO")
+    camera.zoom_extents()
+    zoom_out(h, 2)
+    yield 0.3
+    with bpy.context.temp_override(window=h.window(), area=view(h)[0], region=view(h)[1]):
+        bpy.ops.su.tool_activate(tool_id="su.text")
+    yield 0.3
+    yield hover(h, (4.0, 1.2, 0.0))
+    h.click()
+    yield 0.2
+    yield hover(h, (5.5, 1.0, 0.0))
+    h.click()
+    yield 0.8
+    t = guides.data().texts
+    h.check("Texto: leader text with the edge length 3,00m", len(t) == 1 and t[0].text == "3,00m",
+            [x.text for x in t])
+    h.key('ESC')
+    yield 0.4
+    h.check("text kept after closing the edit dialog", len(guides.data().texts) == 1)
+    h.park_mouse()
+    yield 0.4
+    save_screen(h, "g_texto.png")
+    yield 0.2
+
+    # Texto em 3D: dialog → Enter (Posicionar) → click on the ground → a new group
+    n0 = len([o for o in bpy.data.objects if o.type == 'MESH'])
+    _mod(h, "tools.text")._settings.update(text="SketchUp Mode", height=0.6, depth=0.15)
+    with bpy.context.temp_override(window=h.window(), area=view(h)[0], region=view(h)[1]):
+        bpy.ops.su.tool_activate(tool_id="su.text3d")
+    yield 0.8
+    h.park_mouse()
+    h.key('RET')
+    yield 0.5
+    yield hover(h, (0.5, -2.5, 0.0))
+    h.click()
+    yield 0.8
+    new = [o for o in bpy.data.objects if o.type == 'MESH']
+    grp = [o for o in new if o.su_doc.kind == 'GROUP']
+    h.check("Texto em 3D: a new group with the letters", len(new) == n0 + 1 and grp and len(grp[-1].data.polygons) > 0,
+            (n0, len(new), [o.name for o in grp]))
+    h.check("Texto em 3D group has the back-face GN (\"doc\" event)",
+            bool(grp) and any(m.type == 'NODES' for m in grp[-1].modifiers), [m.name for m in grp[-1].modifiers] if grp else None)
+    h.key('SPACE', unicode=' ')
+    h.park_mouse()
+    yield 0.4
+    save_screen(h, "g_texto3d.png")
+    yield 0.2
+    h.check("single window (no popup left)", len(bpy.context.window_manager.windows) == 1)
 
 
 def run(h):

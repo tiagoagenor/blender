@@ -646,6 +646,80 @@ class SU_Pages(bpy.types.PropertyGroup):
     show_tabs: bpy.props.BoolProperty(default=True)
 
 
+# ------------------------------------------------------------------------------------------ scenes (P1)
+
+def pages(scene=None):
+    scene = scene or bpy.context.scene
+    return getattr(scene, "su_pages", None)
+
+
+def store_page(page, v):
+    page.loc = v.loc
+    page.rot = tuple(v.rot)
+    page.dist = v.dist
+    page.persp = v.persp
+    page.fov_v = fov_v()
+
+
+def page_view(page, base_view):
+    w = base_view.copy()
+    w.loc = Vector(page.loc)
+    w.rot = Quaternion(page.rot).normalized()
+    w.dist = page.dist
+    w.persp = page.persp
+    return w
+
+
+def add_page(name=None):
+    """New scene from the current view (Cenas ▸ +). Returns its index."""
+    pg = pages()
+    v = current()
+    page = pg.pages.add()
+    page.name = name or "Cena {:d}".format(len(pg.pages))
+    if v is not None:
+        store_page(page, v)
+    pg.active = len(pg.pages) - 1
+    return pg.active
+
+
+def go_page(index):
+    pg = pages()
+    if pg is None or not 0 <= index < len(pg.pages):
+        return False
+    _w, area, region, rv3d = view3d()
+    pg.active = index
+    if rv3d is None:
+        return True
+    page = pg.pages[index]
+    push_history()
+    v = page_view(page, View.from_rv3d(region, rv3d))
+    if page.fov_v > 0:
+        pg.fov_v = page.fov_v
+    apply(v, rv3d, area)
+    push_history(v)
+    if v.persp and area is not None:
+        registry.deferred(lambda: keep_fov(area, region, rv3d, force=True), 0.05)
+    return True
+
+
+def update_page(index):
+    pg = pages()
+    v = current()
+    if pg is None or v is None or not 0 <= index < len(pg.pages):
+        return False
+    store_page(pg.pages[index], v)
+    return True
+
+
+def remove_page(index):
+    pg = pages()
+    if pg is None or not 0 <= index < len(pg.pages):
+        return False
+    pg.pages.remove(index)
+    pg.active = min(pg.active, len(pg.pages) - 1)
+    return True
+
+
 def _on_load(**_kw):
     clear_history()
 

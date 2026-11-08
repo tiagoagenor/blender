@@ -218,6 +218,48 @@ def new_face(bm, verts, *, material=SLOT_DEFAULT_FRONT, back_material=SLOT_DEFAU
     return f
 
 
+def face_data(bm, f):
+    """Every custom face attribute of `f` (bool/int/float layers: su_back_mat, F's su_hidden_face,
+    ...) plus material_index and smooth, to carry over to faces that replace it."""
+    data = {"material_index": f.material_index, "smooth": f.smooth, "layers": []}
+    for kind in ("bool", "int", "float"):
+        for name, layer in getattr(bm.faces.layers, kind).items():
+            data["layers"].append((kind, name, f[layer]))
+    return data
+
+
+def apply_face_data(bm, f, data, *, skip=()):
+    """Inverse of face_data; names in `skip` are left alone. Layers missing in `bm` are skipped:
+    create them BEFORE taking face references (match_face_layers) — adding a bmesh layer
+    invalidates the Python references to its elements."""
+    if data is None:
+        return
+    if "material_index" not in skip:
+        f.material_index = data["material_index"]
+    f.smooth = data["smooth"]
+    for kind, name, value in data["layers"]:
+        if name in skip:
+            continue
+        layer = getattr(bm.faces.layers, kind).get(name)
+        if layer is not None:
+            f[layer] = value
+
+
+def match_face_layers(src_bm, dst_bm):
+    """Create in dst_bm every bool/int/float face layer of src_bm (call before creating faces)."""
+    for kind in ("bool", "int", "float"):
+        src, dst = getattr(src_bm.faces.layers, kind), getattr(dst_bm.faces.layers, kind)
+        for name in src.keys():
+            if dst.get(name) is None:
+                dst.new(name)
+
+
+def copy_face_layers(src_bm, f, dst_bm, nf):
+    """Copy f's attributes (material, smooth, every custom face layer) onto nf of another bmesh
+    (dst_bm must already have the layers: match_face_layers)."""
+    apply_face_data(dst_bm, nf, face_data(src_bm, f))
+
+
 def clusters(bm, faces):
     """Group `faces` into logical faces (flood fill through su_bridge edges). Returns list of lists."""
     lay = layers(bm)
@@ -597,7 +639,7 @@ def _process_plane(bm, plane, touched, hints):
         if hit:
             f0 = cl[0]
             f0.normal_update()
-            hints.append((segs, f0.material_index, f0[lay.back], f0.normal.copy()))
+            hints.append((segs, f0.material_index, f0[lay.back], f0.normal.copy(), face_data(bm, f0)))
             _delete_faces(bm, cl)
 
     pos = {}
@@ -624,8 +666,9 @@ def _process_plane(bm, plane, touched, hints):
         if any(_inside(sp, segs) for _f, segs in face_segs):
             continue
         hint = next((h for h in hints if _inside(sp, h[0])), None)
+        data = None
         if hint is not None:
-            _segs, mat, back, normal = hint
+            _segs, mat, back, normal, data = hint
         else:
             outer_edges = {bm.edges.get((outer[i - 1], outer[i])) for i in range(len(outer))}
             if not (outer_edges & touched_set):
@@ -634,6 +677,8 @@ def _process_plane(bm, plane, touched, hints):
         faces = _cdt_fill(bm, frame, [outer] + holes, mat, back)
         if not faces:
             continue
+        for f in faces:
+            apply_face_data(bm, f, data)       # hidden flag etc. of the face they replace
         if normal is not None:
             for f in faces:
                 orient_face(f, normal)
@@ -707,7 +752,8 @@ def rebuild_face(bm, outer, inners, normal, material, back_material, *, through_
     Existing faces of the plane inside the region are deleted ("the cluster"); the CDT pieces are
     created with `material`/`back_material` and normals along `normal`; non-input edges become
     su_bridge. A hole in `through_holes` stays open; any other hole gets an inner face (same
-    material) unless a face already covers it. Returns the new faces."""
+    material) unless a face already covers it. Other face attributes (su_hidden_face, smooth, ...)
+    are inherited from the first face replaced. Returns the new faces."""
     ensure_layers(bm)
     res = EditResult()
     n = Vector(normal).normalized()
@@ -732,6 +778,7 @@ def rebuild_face(bm, outer, inners, normal, material, back_material, *, through_
             sp = _sample([[_to2(frame, v.co) for v in f.verts]])
             if _inside(sp, region_segs):
                 old.append(f)
+    inherit = face_data(bm, old[0]) if old else None
     _delete_faces(bm, old)
     keep_inner = []
     for i, loop in enumerate(inner_v):
@@ -745,6 +792,7 @@ def rebuild_face(bm, outer, inners, normal, material, back_material, *, through_
             keep_inner.append(i + 1)
     faces = _cdt_fill(bm, frame, [outer_v] + inner_v, material, back_material, keep_inner=keep_inner)
     for f in faces:
+        apply_face_data(bm, f, inherit, skip=("material_index", L_BACK))
         orient_face(f, n)
     return faces
 
@@ -805,7 +853,7 @@ def erase_edges(bm, edges):
         segs = []
         for i in members:
             segs.append(_edge_segs(frame, _cluster_boundary(cls[i])))
-        merges.append((plane, segs, f0.material_index, f0[lay.back], f0.normal.copy()))
+        merges.append((plane, segs, f0.material_index, f0[lay.back], f0.normal.copy(), face_data(bm, f0)))
 
     removed = _delete_faces(bm, [f for cl in cls for f in cl])
     verts = {v for e in edges for v in e.verts}
@@ -817,8 +865,8 @@ def erase_edges(bm, edges):
     _dissolve_collinear(bm, [v for v in verts if v.is_valid])
 
     created = []
-    for plane, segs_list, mat, back, normal in merges:
-        hints = [(segs, mat, back, normal) for segs in segs_list]
+    for plane, segs_list, mat, back, normal, data in merges:
+        hints = [(segs, mat, back, normal, data) for segs in segs_list]
         created += _process_plane(bm, plane, [], hints)
     return EditResult(new_faces=[f for f in created if f.is_valid], removed_faces=removed)
 

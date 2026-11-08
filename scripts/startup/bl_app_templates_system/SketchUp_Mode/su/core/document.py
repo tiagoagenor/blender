@@ -315,6 +315,7 @@ def _move_into_new(doc, face_ids, edge_ids, name, kind_):
         g.obj.data.materials.append(mat)
     g.obj.su_doc.curves = doc.obj.su_doc.curves
     dst = g.bm
+    geom.match_face_layers(src, dst)
     dl = geom.ensure_layers(dst)
     vmap = {}
     for e in edges:
@@ -326,9 +327,7 @@ def _move_into_new(doc, face_ids, edge_ids, name, kind_):
         _copy_edge_layers(sl, e, dl, ne)
     for f in faces:
         nf = dst.faces.new([vmap[v] for v in f.verts])
-        nf.material_index = f.material_index
-        nf.smooth = f.smooth
-        nf[dl.back] = f[sl.back]
+        geom.copy_face_layers(src, f, dst, nf)      # material, smooth, su_back_mat, su_hidden_face…
         nf.normal_update()
     verts = {v for e in edges for v in e.verts}
     if faces:
@@ -438,6 +437,7 @@ def explode(obj):
             idx = len(pmats) - 1
         slot[i] = idx
     src, dst = gdoc.bm, pdoc.bm
+    geom.match_face_layers(src, dst)
     sl, dl = geom.ensure_layers(src), geom.ensure_layers(dst)
     res = geom.EditResult()
     vmap = {v: geom.weld_point(dst, m @ v.co) for v in src.verts}
@@ -456,9 +456,8 @@ def explode(obj):
         if len(set(verts)) < 3 or dst.faces.get(verts) is not None:
             continue
         nf = dst.faces.new(verts)
+        geom.copy_face_layers(src, f, dst, nf)
         nf.material_index = slot.get(f.material_index, f.material_index)
-        nf.smooth = f.smooth
-        nf[dl.back] = f[sl.back]
         geom.orient_face(nf, nm @ f.normal)
         res.new_faces.append(nf)
     for child in list(obj.children):

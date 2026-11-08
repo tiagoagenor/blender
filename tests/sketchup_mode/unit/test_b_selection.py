@@ -161,6 +161,23 @@ class TestGroups(Base):
         self.assertEqual(geom.validate(g.bm), [])
         self.assertIsNone(g.obj.parent)
 
+    def test_group_from_and_explode_keep_hidden_face(self):
+        bm = self.doc.bm
+        lay = bm.faces.layers.bool.new("su_hidden_face")
+        bm.faces.ensure_lookup_table()
+        bm.faces[self.top][lay] = True
+        self.doc.write(undo_key=None)
+        refs = selection.expand_face(Ref(self.key, FACE, self.top))
+        g = document.group_from(self.doc, [r.index for r in refs if r.kind == FACE],
+                                [r.index for r in refs if r.kind == EDGE], "Tampa")
+        g.write(undo_key=None)
+        self.doc.write(undo_key=None)
+        glay = g.bm.faces.layers.bool["su_hidden_face"]
+        self.assertTrue(all(f[glay] for f in g.bm.faces))
+        pdoc, res = document.explode(g.obj)
+        plyr = pdoc.bm.faces.layers.bool["su_hidden_face"]
+        self.assertTrue(res.new_faces[0][plyr])
+
     def test_edit_context_and_active(self):
         g = document.create_group("G")
         selection.set([Ref(g.key, OBJECT, 0)])

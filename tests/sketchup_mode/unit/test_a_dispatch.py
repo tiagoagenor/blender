@@ -281,8 +281,16 @@ class TestKeymapData(unittest.TestCase):
     def test_allow_list(self):
         data = {name: content for name, _args, content in keymap.keyconfig_data()}
         ids = {it[0] for name in keymap.FILTERED if name in data for it in data[name]["items"]}
-        self.assertIn("view3d.rotate", ids)
+        if keymap.view3d_items():          # G's su.view_* replace Blender's navigation
+            self.assertTrue(keymap.BLENDER_NAV.isdisjoint(ids), keymap.BLENDER_NAV & ids)
+            self.assertIn("view3d.ndof_orbit", ids)
+            mmb = [it[0] for it in keymap.view3d_items() if it[1]["type"] == 'MIDDLEMOUSE']
+            self.assertIn("su.view_orbit", mmb)
+        else:
+            self.assertIn("view3d.rotate", ids)
         self.assertIn("ed.undo", ids)
+        win = [it[0] for it in keymap.window_items()]
+        self.assertLessEqual(win.count("su.view_orbit"), 2)      # no duplicate Ctrl+Cmd items
         for banned in ("object.hide_collection", "screen.animation_play", "view3d.select", "object.delete",
                        "ui.reset_default_button", "wm.call_menu", "transform.translate", "wm.search_menu"):
             self.assertNotIn(banned, ids)

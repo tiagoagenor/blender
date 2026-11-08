@@ -7,7 +7,10 @@
    fires over the viewport/tray/toolbar. Modal keymaps, gizmos, View2D (tray scrolling), Screen Editing
    (region resize) and other editors (file browser) stay intact. Activated on a timer (after Blender's
    own keyconfig_init); the previously active keyconfig is restored on unregister.
-2. Items in the add-on keyconfig's `Window` keymap, in this order:
+2. Items of the modules' `KEYMAP_VIEW3D` lists (G: MMB orbit/pan/recenter, wheel, trackpad) go to the add-on
+   "3D View" keymap; when there are any, Blender's view3d.rotate/move/zoom/dolly/view_center_pick are dropped
+   from the filtered keyconfig, so only the mode's navigation fires.
+3. Items in the add-on keyconfig's `Window` keymap, in this order:
    TEXTINPUT, RET, NUMPAD_ENTER, BACK_SPACE, ESC → su.vcb_key (PASS_THROUGH when not for it) →
    tool shortcuts (ToolMeta.shortcut → su.tool_activate) → `KEYMAP` lists of the registered modules
    (e.g. F: Delete/⌫ → Excluir, Esc → sair do grupo). A module KEYMAP is a list of
@@ -37,14 +40,16 @@ VCB_ITEMS = (
 # Window shortcuts of commands that are not tools (PLANO §5.3), added only when the operator exists.
 EXTRA_ITEMS = (
     ("su.style_toggle", {"type": 'K', "value": 'PRESS'}, {"properties": [("prop", "show_back_edges")]}),  # Arestas traseiras
-    # Mac mouse (PLANO §5.2): Ctrl+click / idle right click = context menu (F's menu, via A's su.context_menu);
-    # Ctrl+Cmd(+Option) drag = orbit, +Shift = pan (G's operators; pivot = depth under the PRESS point).
+    # Mac mouse (PLANO §5.2): Ctrl+click / idle right click = context menu (F's menu, via A's su.context_menu).
+    # (Ctrl+Cmd drag orbit/pan come from G's ops/view_ops.KEYMAP.)
     ("su.context_menu", {"type": 'LEFTMOUSE', "value": 'CLICK', "ctrl": True}, None),
     ("su.context_menu", {"type": 'RIGHTMOUSE', "value": 'PRESS'}, None),
-    ("su.view_orbit", {"type": 'LEFTMOUSE', "value": 'CLICK_DRAG', "ctrl": True, "oskey": True}, None),
-    ("su.view_orbit", {"type": 'LEFTMOUSE', "value": 'CLICK_DRAG', "ctrl": True, "oskey": True, "alt": True}, None),
-    ("su.view_pan", {"type": 'LEFTMOUSE', "value": 'CLICK_DRAG', "ctrl": True, "oskey": True, "shift": True}, None),
 )
+
+# Blender navigation operators replaced by the modules' KEYMAP_VIEW3D items (G's su.view_*): when such
+# items exist they are dropped from the filtered keyconfig, so only the mode's navigation fires.
+BLENDER_NAV = frozenset({"view3d.rotate", "view3d.move", "view3d.zoom", "view3d.dolly", "view3d.view_center_pick"})
+VIEW3D_KEYMAP = ("3D View", 'VIEW_3D', 'WINDOW')
 
 
 def _op_exists(idname):
@@ -79,8 +84,19 @@ _kc_state = {"previous": None, "active": False}
 
 # ---------------------------------------------------------------------------------------------- filtered keyconfig
 
-def _allowed(idname):
-    return idname in ALLOW or idname.startswith(ALLOW_PREFIXES)
+def _allowed(idname, blocked=frozenset()):
+    return idname not in blocked and (idname in ALLOW or idname.startswith(ALLOW_PREFIXES))
+
+
+def view3d_items():
+    """Items of the modules' KEYMAP_VIEW3D lists whose operators exist, in module order."""
+    pkg = sys.modules[__package__]
+    out = []
+    for mod in getattr(pkg, "_active", []):
+        for it in getattr(mod, "KEYMAP_VIEW3D", ()) or ():
+            if _op_exists(it[0]):
+                out.append(it)
+    return out
 
 
 def keyconfig_data():
@@ -93,10 +109,11 @@ def keyconfig_data():
     if sys.platform == "darwin":
         from bl_keymap_utils.platform_helpers import keyconfig_data_oskey_from_ctrl_for_macos
         data = keyconfig_data_oskey_from_ctrl_for_macos(data)
+    blocked = BLENDER_NAV if view3d_items() else frozenset()
     out = []
     for km_name, km_args, km_content in data:
         if km_name in FILTERED and not km_args.get("modal", False):
-            items = [it for it in km_content["items"] if _allowed(it[0])]
+            items = [it for it in km_content["items"] if _allowed(it[0], blocked)]
             km_content = dict(km_content, items=items)
         out.append((km_name, km_args, km_content))
     return out
@@ -174,6 +191,17 @@ def finalize():
         for name, value in (data or {}).get("properties", ()):
             setattr(kmi.properties, name, value)
         _added.append((km, kmi))
+    name, space, region = VIEW3D_KEYMAP
+    km3 = kc.keymaps.new(name, space_type=space, region_type=region)
+    for idname, args, data in view3d_items():
+        try:
+            kmi = km3.keymap_items.new(idname, **args)
+        except Exception:
+            perf.exception("3D View keymap item {!r} {!r}".format(idname, args))
+            continue
+        for pname, value in (data or {}).get("properties", ()):
+            setattr(kmi.properties, pname, value)
+        _added.append((km3, kmi))
     if not bpy.app.background:
         registry.deferred(activate_keyconfig, 0.0)
 

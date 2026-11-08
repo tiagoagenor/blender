@@ -154,6 +154,41 @@ def run(h):
     st = h.stats()
     h.check("Cmd+Z ×2 removes the new line, keeps the face", (st.get("edges"), st.get("faces")) == (4, 1), st)
 
+    # 6b. navigation goes through G's su.view_* (Blender's view3d.rotate/move/zoom are not in the keymap)
+    if hasattr(bpy.types, "SU_OT_view_orbit"):
+        kc_user = bpy.context.window_manager.keyconfigs.user
+        km = kc_user.keymaps.get("3D View")
+        active = [(k.idname, k.type, k.value) for k in km.keymap_items if k.active] if km else []
+        nav = {(i, t) for i, t, v in active if t in {'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE',
+                                                       'TRACKPADPAN', 'TRACKPADZOOM'}}
+        h.check("3D View: MMB/wheel/trackpad only via su.view_*", nav and all(i.startswith("su.view_") for i, _t in nav),
+                sorted(nav))
+        win, area, R = h.area_regions()
+        rv3d = area.spaces.active.region_3d
+        rw = R['WINDOW']
+        h.move(*h.region_xy(rw, 0.5, 0.5))
+        yield 0.2
+        rot0, loc0, dist0 = rv3d.view_rotation.copy(), rv3d.view_location.copy(), rv3d.view_distance
+        x, y = h._mouse
+        h.event('MIDDLEMOUSE', 'PRESS')
+        for i in range(1, 8):
+            h.move(x + 10 * i, y)
+        h.event('MIDDLEMOUSE', 'RELEASE')
+        yield 0.5
+        h.check("MMB drag orbits", rv3d.view_rotation.rotation_difference(rot0).angle > 1e-3)
+        loc1 = rv3d.view_location.copy()
+        x, y = h._mouse
+        h.event('MIDDLEMOUSE', 'PRESS', shift=True)
+        for i in range(1, 8):
+            h.move(x, y + 10 * i, )
+        h.event('MIDDLEMOUSE', 'RELEASE', shift=True)
+        yield 0.5
+        h.check("Shift+MMB drag pans", (rv3d.view_location - loc1).length > 1e-4)
+        d1 = rv3d.view_distance
+        h.event('WHEELUPMOUSE', 'PRESS')
+        yield 0.4
+        h.check("wheel zooms in", rv3d.view_distance < d1, (d1, rv3d.view_distance))
+
     # 7. invariants
     d = h.state()
     h.check("no active object", d["active_object"] is None, d["active_object"])

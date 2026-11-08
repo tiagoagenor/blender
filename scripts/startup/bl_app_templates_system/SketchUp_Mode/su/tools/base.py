@@ -203,6 +203,21 @@ def find_view3d(context=None):
     return win, area, region, area.spaces.active.region_3d
 
 
+def run_command(meta):
+    """Run a COMMAND meta's operator ('INVOKE_DEFAULT') in the context of the main 3D view."""
+    try:
+        mod, name = meta.operator.split(".", 1)
+        op = getattr(getattr(bpy.ops, mod), name)
+        win, area, region, _rv3d = find_view3d()
+        if area is None:
+            return op('INVOKE_DEFAULT')
+        with bpy.context.temp_override(window=win, area=area, region=region):
+            return op('INVOKE_DEFAULT')
+    except Exception:
+        perf.exception("command {:s} ({:s})".format(meta.id, meta.operator))
+        return {'CANCELLED'}
+
+
 def set_workspace_tool(tool_id):
     """Make `tool_id` the workspace's active tool (GUI) and follow it."""
     win, area, region, _rv3d = find_view3d()
@@ -368,6 +383,7 @@ class Dispatcher:
         self.running = False
         self.last_error = ''
         self.last_event = None
+        self._command_pending = ''   # COMMAND id picked as workspace tool, run on the next tick
         self._press = None          # (t, x, y, clicks) of the last LEFTMOUSE press
 
     # -- tool switching ---------------------------------------------------------------------------
@@ -406,6 +422,20 @@ class Dispatcher:
         if tid == self.tool_id:
             return
         back = self.tool_id if self.tool_id in TOOLS else ''
+        cls = TOOLS.get(tid)
+        if cls is not None and cls.meta.kind == 'COMMAND':
+            # a command button of the LTS/toolbar became the workspace tool: run it once, then go back
+            if self._command_pending != tid:
+                self._command_pending = tid
+                ret = back or ("su.select" if "su.select" in TOOLS else '')
+
+                def run(meta=cls.meta, ret=ret):
+                    self._command_pending = ''
+                    run_command(meta)
+                    if ret:
+                        set_workspace_tool(ret)
+                registry.deferred(run, 0.0)
+            return
         if tid.startswith("su.") and tid not in TOOLS and back:
             # a disabled placeholder of the toolbar/LTS was clicked: "Em breve" and back to our tool
             catalog = registry.optional("tools.catalog")

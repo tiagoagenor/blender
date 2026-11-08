@@ -147,17 +147,9 @@ class SU_OT_tool_activate(bpy.types.Operator):
         if meta.kind == 'COMMAND':
             if base.DISPATCH.running:
                 base.DISPATCH.cancel(base.tool_context(context))
-            return _call_operator(meta.operator)
+            base.run_command(meta)                 # in the 3D view's context, wherever the mouse is
+            return {'FINISHED'}
         return {'FINISHED'} if base.set_workspace_tool(tid) else {'CANCELLED'}
-
-
-def _call_operator(idname):
-    try:
-        mod, name = idname.split(".", 1)
-        return getattr(getattr(bpy.ops, mod), name)('INVOKE_DEFAULT')
-    except Exception:
-        perf.exception("command operator {!r}".format(idname))
-        return {'CANCELLED'}
 
 
 def _feed(context, event):

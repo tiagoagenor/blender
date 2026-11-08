@@ -411,6 +411,79 @@ class TestErase(KernelCase):
         self.assertEqual(counts(self.bm), (4, 4, 1))
 
 
+class TestBridgeCrossing(KernelCase):
+    """Bug from E: add_edge split su_bridge edges and left stray vertices. Bridges are not geometry:
+    only visible edges split; the crossed logical face is rebuilt with new bridges."""
+
+    def assertNoStrayVertex(self):
+        lay = geom.layers(self.bm)
+        for v in self.bm.verts:
+            vis = [e for e in v.link_edges if not e[lay.bridge]]
+            self.assertGreaterEqual(len(vis), 1, "vertex only on bridges: {}".format(v.co))
+            if len(vis) == 2:
+                d1 = vis[0].other_vert(v).co - v.co
+                d2 = vis[1].other_vert(v).co - v.co
+                self.assertGreater(d1.cross(d2).length, 1e-6 * d1.length * d2.length,
+                                   "stray collinear vertex at {}".format(v.co))
+
+    def test_line_through_face_with_inner_face(self):
+        rect(self.bm, 0, 0, 3, 3)
+        rect(self.bm, 1, 1, 2, 2)
+        self.assertGreaterEqual(bridges(self.bm), 2)
+        geom.add_edge(self.bm, V((0, 1.5, 0)), V((3, 1.5, 0)))
+        self.assertEqual(counts(self.bm), (12, 15, 4))
+        self.assertEqual(bridges(self.bm), 0)            # both halves of the ring are simple
+        self.assertEqual([a for a, _n in logical(self.bm)], [0.5, 0.5, 4.0, 4.0])
+        for _a, n in logical(self.bm):
+            self.assertNormal(n, (0, 0, -1))
+        self.assertNoStrayVertex()
+
+    def test_line_through_hole_region(self):
+        geom.rebuild_face(self.bm, [V((0, 0, 0)), V((3, 0, 0)), V((3, 3, 0)), V((0, 3, 0))],
+                          [[V((1, 1, 0)), V((2, 1, 0)), V((2, 2, 0)), V((1, 2, 0))]],
+                          V((0, 0, -1)), 2, 1, through_holes={0})
+        geom.add_edge(self.bm, V((0, 1.5, 0)), V((3, 1.5, 0)))
+        # the ring splits in 2 (material kept); each half of the hole is now a closed loop through
+        # a new edge, so it gets a new default face (SketchUp healing rule)
+        self.assertEqual(counts(self.bm), (12, 15, 4))
+        self.assertEqual(bridges(self.bm), 0)
+        self.assertEqual([a for a, _n in logical(self.bm)], [0.5, 0.5, 4.0, 4.0])
+        self.assertEqual(sorted(f.material_index for f in self.bm.faces), [0, 0, 2, 2])
+        self.assertNoStrayVertex()
+
+    def test_line_through_ring_only(self):
+        rect(self.bm, 0, 0, 6, 6)
+        rect(self.bm, 2, 2, 4, 4)
+        geom.add_edge(self.bm, V((0, 1, 0)), V((6, 1, 0)))          # below the inner square
+        self.assertEqual(counts(self.bm)[:2], (10, 11))
+        self.assertGreaterEqual(bridges(self.bm), 2)                   # the upper part keeps a hole
+        self.assertEqual([a for a, _n in logical(self.bm)], [4.0, 6.0, 26.0])
+        self.assertNoStrayVertex()
+
+    def test_offset_like_inner_loop(self):
+        geom.rebuild_face(self.bm, [V((0, 0, 0)), V((6, 0, 0)), V((6, 6, 0)), V((0, 6, 0))],
+                          [[V((2, 2, 0)), V((4, 2, 0)), V((4, 4, 0)), V((2, 4, 0))]],
+                          V((0, 0, 1)), 0, 1, through_holes={0})
+        rect(self.bm, 1, 1, 5, 5)                    # loop between the border and the hole
+        self.assertEqual(counts(self.bm), (12, 12, len(self.bm.faces)))
+        self.assertEqual([a for a, _n in logical(self.bm)], [12.0, 20.0])
+        for _a, n in logical(self.bm):
+            self.assertNormal(n, (0, 0, 1))
+        self.assertNoStrayVertex()
+
+    def test_endpoint_on_a_bridge_does_not_split_it(self):
+        rect(self.bm, 0, 0, 3, 3)
+        rect(self.bm, 1, 1, 2, 2)
+        lay = geom.layers(self.bm)
+        br = next(e for e in self.bm.edges if e[lay.bridge])
+        mid = (br.verts[0].co + br.verts[1].co) * 0.5
+        n_before = len(self.bm.verts)
+        v = geom.weld_point(self.bm, mid)
+        self.assertEqual(len(self.bm.verts), n_before + 1)
+        self.assertEqual(len(v.link_edges), 0)        # a free vertex, the bridge is untouched
+        self.bm.verts.remove(v)
+
+
 class TestHelpers(unittest.TestCase):
     def test_circle_and_arcs(self):
         pts = geom.circle_points(V((0, 0, 0)), UP, 2.0, 24)

@@ -291,7 +291,10 @@ def _weld(bm, co, tol, res):
             best, best_d = v, dist
     if best is not None:
         return best
+    bridge = layers(bm).bridge
     for e in bm.edges:
+        if e[bridge]:
+            continue        # CDT bridges are not geometry: the face is rebuilt (new bridges) instead
         t, p = _closest_on_edge(e, co)
         if (p - co).length > tol:
             continue
@@ -308,7 +311,9 @@ def _weld(bm, co, tol, res):
 
 
 def weld_point(bm, co, tol=GEOM_TOL):
-    """Existing vertex within tol, else split the edge passing through co, else a new vertex."""
+    """Existing vertex within tol, else split the (visible, non-bridge) edge passing through co,
+    else a new vertex."""
+    ensure_layers(bm)
     return _weld(bm, co, tol, EditResult())
 
 
@@ -331,9 +336,11 @@ def add_edge(bm, a, b, *, curve_id=0):
     seg_len = math.sqrt(l2)
 
     # 1. split existing edges that cross the open segment
+    # (su_bridge edges are skipped: a crossed logical face is dissolved and rebuilt by auto_faces,
+    # which re-chooses its bridges — splitting them would leave stray vertices on the new edge)
     crossings = []
     for e in bm.edges:
-        if va in e.verts or vb in e.verts:
+        if e[lay.bridge] or va in e.verts or vb in e.verts:
             continue
         c0, c1 = e.verts[0].co, e.verts[1].co
         r = mgeo.intersect_line_line(pa, pb, c0, c1)

@@ -38,3 +38,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - **`Document.write(undo_key, select=None)`**: `select` define a seleção pós-operação entre `before_change` e `push`. Excluir = `write(undo_key=..., select=())`: o undo devolve a seleção de antes (AF-6, testado headless e na GUI). `write` também chama `index_update` (índice do bm == índice da malha).
 - **Grupos**: `create_group` emite "doc"; `group_from(doc, faces, edges, name)` (Criar grupo: move faces lógicas + arestas; arestas usadas por faces de fora ficam também no doc; o grupo herda a matriz e os slots); `explode(obj)` (solda os vértices no doc pai, mapeia materiais por identidade, re-parenta filhos mantendo a matriz de mundo, apaga o objeto). Explodir não cria objeto-documento novo, então não emite "doc". `edit_context.enter/exit` limpam a seleção.
 - Testes: `test_b_geom` (41) + `test_b_document` (9) + `test_b_entities` (10) + `test_b_selection` (12) = 72; GUI `scn_b` com 40 verificações e prints em `doc/sketchup_mode/screens/b_*.png`.
+
+### Correção (relato de E): `add_edge` × pontes CDT
+- `add_edge`/`weld_point` não dividem mais arestas `su_bridge` (nem nos cruzamentos nem na solda das pontas): ponte não é geometria. A face lógica atravessada é dissolvida e refeita pelo `auto_faces` (pontes novas pela CDT), sem vértices soltos na aresta nova. Só arestas visíveis dividem.
+- Atravessar o **vão** de um furo passante com uma linha fecha as duas metades do vão: elas ganham face nova (regra de cura do SketchUp), e o anel se divide mantendo o material.
+- Testes `TestBridgeCrossing` (5; falham no kernel antigo): linha por face com face interna, linha pelo vão, linha só pelo anel, laço interno tipo Equidistância, ponta sobre ponte.

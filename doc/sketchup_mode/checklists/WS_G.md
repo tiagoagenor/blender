@@ -9,7 +9,7 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 4. [x] Fita métrica (guia, ponto-guia, modo medir)
 5. [x] Transferidor (gizmo no hover, guia angular)
 6. [x] Dimensões lineares (AC-DIM-1..3; texto em tela, Cmd+Z)
-7. [ ] P1: Anterior/Próxima, Janela de zoom, Posição da câmera, Texto com chamada, Texto em 3D (emite `"doc"`), Cenas + abas
+7. [x] P1: Anterior/Próxima, Janela de zoom, Posição da câmera, Texto com chamada, Texto em 3D (emite `"doc"`), Cenas + abas
 
 ## Aceite e comandos (referência)
 - **Aceite**: AC-FIT-1..4, AC-TRA-1..2, AC-DIM-1..3, AC-NAV-1..8.
@@ -44,3 +44,12 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - Transferidor: gizmo no hover no plano de `inference.hover_plane` (azul/vermelho/verde), centro → linha de base → ângulo (15° perto do transferidor; `30` / `3:12`), Option = só medir.
 - Cenário `scn_g` (partes nav, tape, protractor, dimension): verde. Prints: `doc/sketchup_mode/screens/g_orbita.png`, `g_fita_guia.png`, `g_transferidor.png`, `g_transferidor_face.png`, `g_cotas.png`, `g_cotas_orbita.png`.
 - Fora (P2/adiado): redimensionar o modelo com a Fita (digitar novo comprimento após medir); dimensões associadas à geometria (hoje ficam fixas onde foram criadas).
+
+### P1 (bloco 4)
+- Anterior/Próxima: `su.view_previous/su.view_next` (+ COMMAND `su.previous` no LTS).
+- Janela de zoom (`su.zoom_window`, ferramenta; o operador `su.zoom_window` do menu Câmera ativa a ferramenta): arrastar ou clique-clique; o centro da janela vai ao centro e a janela enche a região.
+- Posição da câmera (`su.position_camera`; menu `su.position_camera_cmd`): clique = olho a 1,676 m sobre o ponto olhando na horizontal; arrastar = olhar para o ponto da soltura; Medidas "Altura dos olhos" antes (próxima) ou depois (reposiciona, sem passo de undo).
+- Texto (`su.text`): clique numa entidade (face → área, aresta → comprimento, ponto → coordenadas), mover, clicar; abre `su.text_edit` (diálogo) para editar. Texto de tela (vazio) = P2.
+- Texto em 3D (`su.text3d`): diálogo `su.text3d_dialog` (texto, altura, extrudado, profundidade; Enter = "Posicionar") e clique → GRUPO novo (`document.create_group` + evento `"doc"`): faces coplanares fundidas, arestas internas `su_bridge`, laterais curvas `su_soft`; deitado no chão ou na face sob o cursor (letras de pé ao longo do declive).
+- Cenas: `Scene.su_pages.pages` (desfazível); Bandeja ▸ Cenas (`ui/tray_scenes.py`: + − ⟳, lista, nome/descrição; alterna as abas); `su.scene_add/go/update/remove`, `su.toggle_scene_tabs` (Visualizar ▸ Abas de cena).
+- Abas (`ui/scene_tabs.py`): com cenas, o HEADER aparece com a barra Primeiros passos (`header_toolbar.draw_toolbar` de D) e o TOOL_HEADER (logo acima da viewport) mostra as abas — a troca prevista na §4.1; sem cenas, igual ao layout de D. **Para D**: `scene_tabs` sobrepõe `VIEW3D_HT_header.draw` e `VIEW3D_HT_tool_header.draw` (ORDER 580, depois de `header_toolbar`), chamando a sua `draw_toolbar`.

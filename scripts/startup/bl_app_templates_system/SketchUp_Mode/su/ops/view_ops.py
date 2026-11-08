@@ -79,6 +79,9 @@ STRINGS = {
     "view.left": {"pt_BR": "Esquerda", "en": "Left"},
     "view.right": {"pt_BR": "Direita", "en": "Right"},
     "guide.delete_all": {"pt_BR": "Excluir guias", "en": "Delete Guides"},
+    "cam.scene_add": {"pt_BR": "Adicionar cena", "en": "Add Scene"},
+    "cam.scene_update": {"pt_BR": "Atualizar cena", "en": "Update Scene"},
+    "cam.scene_remove": {"pt_BR": "Excluir cena", "en": "Delete Scene"},
 }
 
 _last_press = [None]      # (t, x, y, button) of the last orbit press (double click → recentre)
@@ -462,7 +465,114 @@ class SU_OT_delete_guides(bpy.types.Operator):
         return {'FINISHED'}
 
 
-CLASSES = (SU_OT_view_orbit, SU_OT_view_pan, SU_OT_view_zoom, SU_OT_view_trackpad, SU_OT_view_recenter,
+class SU_OT_scene_add(bpy.types.Operator):
+    bl_idname = "su.scene_add"
+    bl_label = "Adicionar cena"
+    bl_description = "Adicionar uma cena com a vista atual"
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        from ..core import undo
+        camera.add_page()
+        undo.push("cam.scene_add")
+        _tabs_changed()
+        return {'FINISHED'}
+
+
+class SU_OT_scene_go(bpy.types.Operator):
+    bl_idname = "su.scene_go"
+    bl_label = "Cena"
+    bl_description = "Ir para a cena"
+    bl_options = {'INTERNAL'}
+
+    index: IntProperty(default=0)
+
+    def execute(self, context):
+        return {'FINISHED'} if camera.go_page(self.index) else {'CANCELLED'}
+
+
+class SU_OT_scene_update(bpy.types.Operator):
+    bl_idname = "su.scene_update"
+    bl_label = "Atualizar cena"
+    bl_description = "Gravar a vista atual na cena selecionada"
+    bl_options = {'INTERNAL'}
+
+    index: IntProperty(default=-1)
+
+    def execute(self, context):
+        from ..core import undo
+        pg = camera.pages()
+        i = self.index if self.index >= 0 else pg.active
+        if not camera.update_page(i):
+            return {'CANCELLED'}
+        undo.push("cam.scene_update")
+        return {'FINISHED'}
+
+
+class SU_OT_scene_remove(bpy.types.Operator):
+    bl_idname = "su.scene_remove"
+    bl_label = "Excluir cena"
+    bl_options = {'INTERNAL'}
+
+    index: IntProperty(default=-1)
+
+    def execute(self, context):
+        from ..core import undo
+        pg = camera.pages()
+        i = self.index if self.index >= 0 else pg.active
+        if not camera.remove_page(i):
+            return {'CANCELLED'}
+        undo.push("cam.scene_remove")
+        _tabs_changed()
+        return {'FINISHED'}
+
+
+class SU_OT_toggle_scene_tabs(bpy.types.Operator):
+    bl_idname = "su.toggle_scene_tabs"
+    bl_label = "Abas de cena"
+    bl_options = {'INTERNAL'}
+
+    def execute(self, context):
+        pg = camera.pages()
+        pg.show_tabs = not pg.show_tabs
+        _tabs_changed()
+        return {'FINISHED'}
+
+
+def _tabs_changed():
+    tabs = registry.optional("ui.scene_tabs")
+    if tabs is not None:
+        tabs.sync()
+
+
+class _ToolCmd:
+    bl_options = {'INTERNAL'}
+    tool_id = ""
+
+    @classmethod
+    def poll(cls, context):
+        return _poll_view(context)
+
+    def execute(self, context):
+        from ..tools import base
+        return {'FINISHED'} if base.set_workspace_tool(self.tool_id) else {'CANCELLED'}
+
+
+class SU_OT_zoom_window(_ToolCmd, bpy.types.Operator):
+    bl_idname = "su.zoom_window"
+    bl_label = "Janela de zoom"
+    tool_id = "su.zoom_window"
+
+
+class SU_OT_position_camera_cmd(_ToolCmd, bpy.types.Operator):
+    bl_idname = "su.position_camera_cmd"
+    bl_label = "Posição da câmera"
+    tool_id = "su.position_camera"
+
+
+CLASSES = (SU_OT_scene_add, SU_OT_scene_go, SU_OT_scene_update, SU_OT_scene_remove, SU_OT_toggle_scene_tabs,
+           SU_OT_zoom_window, SU_OT_position_camera_cmd,
+           SU_OT_view_orbit, SU_OT_view_pan, SU_OT_view_zoom, SU_OT_view_trackpad, SU_OT_view_recenter,
            SU_OT_zoom_extents_cmd, SU_OT_view_standard, SU_OT_set_projection, SU_OT_view_previous,
            SU_OT_view_next, SU_OT_delete_guides)
 

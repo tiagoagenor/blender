@@ -51,6 +51,50 @@ def _edge_radius():
     return r if r > 0 else constants.SNAP_PX_EDGE
 
 
+# ---------------------------------------------------------------------------------------------- hidden faces
+# Ocultar on faces sets the face BOOLEAN attribute `su_hidden_face` (F). Hidden faces are not pickable
+# (Selecionar / Apagar / Pintura / Mover / caixa) unless Visualizar ▸ Geometria oculta is on.
+HIDDEN_FACE = "su_hidden_face"
+
+
+def show_hidden():
+    style = getattr(getattr(bpy.context, "scene", None), "su_style", None)
+    return bool(getattr(style, "show_hidden_geometry", False))
+
+
+def hidden_faces(obj):
+    """Set of hidden face indices of a mesh object (from the mesh attribute)."""
+    me = getattr(obj, "data", None)
+    a = me.attributes.get(HIDDEN_FACE) if me is not None and hasattr(me, "attributes") else None
+    if a is None or a.domain != 'FACE' or a.data_type != 'BOOLEAN':
+        return set()
+    import numpy as np
+    arr = np.zeros(len(me.polygons), dtype=bool)
+    if len(arr):
+        a.data.foreach_get("value", arr)
+    return {int(i) for i in np.nonzero(arr)[0]}
+
+
+def hidden_skip():
+    """{doc_key: hidden face indices} for spatial.ray_cast(skip=...) (empty when they are shown)."""
+    if show_hidden():
+        return None
+    out = {}
+    for o in bpy.context.scene.objects:
+        if o.type == 'MESH':
+            h = hidden_faces(o)
+            if h:
+                out[o.name] = h
+    return out or None
+
+
+def is_hidden_face(doc_key, index):
+    if show_hidden():
+        return False
+    obj = bpy.data.objects.get(doc_key)
+    return obj is not None and index in hidden_faces(obj)
+
+
 def pick(tc, xy, inf=None, *, edges=True, faces=True):
     """(doc_key, 'EDGE'|'FACE', mesh index) under region pixel `xy`, or None.
     GUI: own screen pick (edge ≤ 7 px in front of the face wins). Headless (no region): from the
@@ -66,12 +110,14 @@ def pick(tc, xy, inf=None, *, edges=True, faces=True):
                 return None
             e = next((e for e in obj.data.edges if i in e.vertices), None)
             return (inf.doc_key, 'EDGE', e.index) if e is not None else None
+        if k == 'FACE' and faces and is_hidden_face(inf.doc_key, int(i)):
+            return None
         if k == 'EDGE' and edges or k == 'FACE' and faces:
             return (inf.doc_key, k, int(i))
         return None
     from ..core import viewutil
     o, d = viewutil.mouse_ray(tc.region, tc.rv3d, xy)
-    hit = spatial.ray_cast(tc, o, d) if faces or edges else spatial.Hit.miss()
+    hit = spatial.ray_cast(tc, o, d, skip=hidden_skip()) if faces or edges else spatial.Hit.miss()
     if edges:
         proj = spatial.projection(tc.region, tc.rv3d)
         for eh in spatial.edges_near(proj, xy, _edge_radius()):
@@ -225,7 +271,7 @@ def rect_refs(tc, x0, y0, x1, y1, mode):
             if not h:
                 continue
             for kind in ('EDGE', 'FACE'):
-                got = h[kind]
+                got = h[kind] if kind == 'EDGE' or show_hidden() else h[kind] - hidden_faces(d.obj)
                 done = set()
                 for i in sorted(got):
                     if i in done:

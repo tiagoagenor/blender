@@ -42,10 +42,12 @@ def pick_face(tc, xy, inf):
     if tc is None or tc.region is None or tc.rv3d is None:
         if inf is None or not inf.elem or inf.elem[0] != 'FACE' or not inf.doc_key:
             return None
+        if sel_tool.is_hidden_face(inf.doc_key, int(inf.elem[1])):
+            return None
         return inf.doc_key, int(inf.elem[1]), (-1 if inf.side < 0 else 1)
     from ..core import viewutil
     o, d = viewutil.mouse_ray(tc.region, tc.rv3d, xy)
-    hit = spatial.ray_cast(tc, o, d)
+    hit = spatial.ray_cast(tc, o, d, skip=sel_tool.hidden_skip())
     if not hit.ok:
         return None
     return hit.doc_key, hit.face_idx_orig, hit.side

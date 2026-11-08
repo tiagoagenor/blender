@@ -12,8 +12,8 @@ query use the ORIGINAL mesh; exports/intersections must skip modifiers.
 copies, 3D text, imports). `set_back_copy(False)` hides the copy (Raio X).
 
 Until F's core/materials.py exists, `ensure()` also gives slot-less objects the two default materials
-("Padrão" white, "Padrão (verso)" #A4B2BB) so the slice shows the right colours; once F is loaded this
-fallback is skipped and F's `ensure_slots` (subscribed to the same events) owns the slots.
+("Padrão" white, "Padrão (verso)" #A4B2BB) so the slice shows the right colours; once F is loaded,
+`ensure()` calls F's `materials.ensure_slots(obj)` instead (F owns the slots).
 
 Back faces are UNLIT (layer BACKFACES=15, `draw_back_faces`): Workbench lights the flipped copy with the
 camera-relative light, which made a ground face seen from above as dark as a box top (≈101,110,116).
@@ -83,8 +83,22 @@ def node_group():
     return ng
 
 
-def _materials_owner_loaded():
-    return sys.modules.get(__package__.rsplit(".", 1)[0] + ".core.materials") is not None
+def _materials_module():
+    """F's core/materials.py (any package name: `su` in unit tests, the template package in the GUI)."""
+    for name in (__package__.rsplit(".", 1)[0] + ".core.materials", "su.core.materials"):
+        mod = sys.modules.get(name)
+        if mod is not None and hasattr(mod, "ensure_slots"):
+            return mod
+    return None
+
+
+def _ensure_slots(obj):
+    """Slots 0/1 by F's materials.ensure_slots when F is loaded, else D's fallback materials."""
+    mats = _materials_module()
+    if mats is not None:
+        mats.ensure_slots(obj)
+    else:
+        _fallback_slots(obj)
 
 
 def _default_material(name, rgb):
@@ -124,8 +138,7 @@ def ensure(obj):
     if mod.show_viewport != _state["back_copy"]:
         mod.show_viewport = _state["back_copy"]
     mod.show_render = True
-    if not _materials_owner_loaded():
-        _fallback_slots(obj)
+    _ensure_slots(obj)
     return mod
 
 

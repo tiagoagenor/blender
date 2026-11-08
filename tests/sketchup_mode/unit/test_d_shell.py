@@ -197,6 +197,33 @@ class TestDisplayGN(unittest.TestCase):
             bpy.data.meshes.remove(me)
 
 
+class TestDisplayGNSlots(unittest.TestCase):
+    def test_ensure_uses_f_materials_when_loaded(self):
+        import sys
+        import types
+        gn = importlib.import_module("su.draw.display_gn")
+        calls = []
+        real = sys.modules.get("su.core.materials")
+        if real is None:
+            fake = types.ModuleType("su.core.materials")
+            fake.ensure_slots = lambda obj: calls.append(obj.name)
+            sys.modules["su.core.materials"] = fake
+        ob, *_ = _box_with_lines()
+        try:
+            gn.ensure(ob)
+            if real is None:
+                self.assertEqual(calls, [ob.name])
+                self.assertEqual(len(ob.data.materials), 0, "F owns the slots when loaded")
+            else:
+                self.assertGreaterEqual(len(ob.data.materials), 2)
+        finally:
+            if real is None:
+                del sys.modules["su.core.materials"]
+            me = ob.data
+            bpy.data.objects.remove(ob)
+            bpy.data.meshes.remove(me)
+
+
 class TestIcons(unittest.TestCase):
     def test_every_tool_icon_is_an_original_drawing_with_dim(self):
         for tid, h in icons.TOOL_ICONS.items():

@@ -369,3 +369,84 @@ class TestContext(unittest.TestCase):
         self.assertEqual(i18n.t("inf.endpoint"), "Ponto de extremidade")
         self.assertEqual(i18n.t("inf.axis_z"), "No eixo azul")
         self.assertEqual(i18n.t("vcb.length"), "Comprimento")
+
+
+class TestCenter(_Base):
+    """Centro: hovering a curve (B: su_curve + su_doc.curves meta) makes its centre inferable."""
+
+    def _circle(self, cid=7, n=12, c=(6.0, 6.0, 0.0), r=1.0):
+        import json
+        verts = [(c[0] + r * math.cos(2 * math.pi * i / n), c[1] + r * math.sin(2 * math.pi * i / n), c[2])
+                 for i in range(n)]
+        obj = F.mesh_object("circle", verts, edges=[(i, (i + 1) % n) for i in range(n)])
+        a = obj.data.attributes.new("su_curve", 'INT', 'EDGE')
+        for e in a.data:
+            e.value = cid
+        obj.su_doc.curves = json.dumps({str(cid): {"kind": "CIRCLE", "center": list(c), "radius": r}})
+        obj.location = (0.0, 0.0, 0.5)
+        bpy.context.view_layer.update()
+        return obj
+
+    def test_center_after_hover(self):
+        if not hasattr(bpy.types.Object, "su_doc"):
+            self.skipTest("B's su_doc not registered")
+        obj = self._circle()
+        center = Vector((6, 6, 0.5))
+        self.assertNotEqual(self.query(self.xy(center, 2, 1)).kind, "CENTER")
+        rim = obj.matrix_world @ obj.data.vertices[0].co.lerp(obj.data.vertices[1].co, 0.4)
+        hov = self.query(self.xy(rim))
+        self.assertIn(hov.kind, ("ON_EDGE", "ENDPOINT", "MIDPOINT"))
+        inf = self.query(self.xy(center, 2, 1))
+        self.assertEqual((inf.kind, inf.tooltip_key), ("CENTER", "inf.center"))
+        self.assertVec(inf.point, center, 1e-5)
+        self.assertEqual(inf.elem, ("CURVE", 7))
+
+
+class TestShapes(_Base):
+    """P1: Quadrado / Seção áurea (Retângulo) and Semicírculo (Arco de dois pontos)."""
+
+    def test_square_and_golden(self):
+        c = Vector((-2, 4, 0))
+        u, v = Vector((1, 0, 0)), Vector((0, 1, 0))
+        sq = inference.rect_shape(self.q(self.xy((-0.5, 5.5, 0), 2, -1)), c, (-0.5, 5.5, 0), u, v)
+        self.assertIsNotNone(sq)
+        self.assertEqual(sq.tooltip_key, "inf.square")
+        d = sq.point - c
+        self.assertAlmostEqual(abs(d.x), abs(d.y), places=6)
+        g = c + Vector((inference.GOLDEN, 1.0, 0.0)) * 0.9
+        gold = inference.rect_shape(self.q(self.xy(g)), c, g, u, v)
+        self.assertEqual(gold.tooltip_key, "inf.golden")
+        d = gold.point - c
+        self.assertAlmostEqual(d.x / d.y, inference.GOLDEN, places=5)
+        far = c + Vector((2.0, 0.4, 0.0))
+        self.assertIsNone(inference.rect_shape(self.q(self.xy(far)), c, far, u, v))
+        from su import i18n
+        self.assertEqual(i18n.t("inf.golden"), "Seção áurea")
+
+    def test_half_circle(self):
+        a, b, n = Vector((-2, 4, 0)), Vector((0, 4, 0)), Vector((0, 0, 1))
+        near = Vector((-1, 5.02, 0))
+        bulge, key = inference.arc_semicircle(self.q(self.xy(near)), a, b, near, n)
+        self.assertEqual(key, "inf.half_circle")
+        self.assertAlmostEqual(abs(bulge), 1.0, places=9)
+        low = Vector((-1, 4.4, 0))
+        bulge, key = inference.arc_semicircle(self.q(self.xy(low)), a, b, low, n)
+        self.assertEqual(key, "")
+        self.assertAlmostEqual(abs(bulge), 0.4, places=6)
+
+
+class TestGroupContext(_Base):
+    def test_point_in_group_is_labelled(self):
+        try:
+            from su.core import document
+        except ImportError:
+            self.skipTest("B's document not available")
+        g = document.create_group(F.PREFIX + "grp")
+        bm = g.bm
+        vs = [bm.verts.new(c) for c in ((5, -2, 0), (6, -2, 0), (6, -1, 0), (5, -1, 0))]
+        bm.faces.new(vs)
+        g.write(undo_key=None)
+        bpy.context.view_layer.update()
+        inf = self.query(self.xy((6, -2, 0), 2, 1))
+        self.assertEqual(inf.kind, "ENDPOINT")
+        self.assertEqual(inf.in_context, "GROUP")

@@ -308,6 +308,143 @@ def run(h):
     yield from shot("f_pintura")
     tray.set_open("materials", False)
 
+    # 7. Mover: the ridge of the house (ROTEIRO_CASA Parte 1, passos 3–4; AC-MOV-6)
+    base = importlib.import_module(su.__name__ + ".tools.base")
+    space.show_region_ui = True
+    new_box()
+    geom.add_edge(doc.bm, V((0, 3, 3)), V((8, 3, 3)))
+    with ctx():
+        doc.write(undo_key="undo.adjust")
+    rv3d.view_location = V((4, 3, 1.5))
+    rv3d.view_distance = 24.0
+    yield 0.4
+    h.check("ridge line splits the top: 7 faces", len(doc.bm.faces) == 7, len(doc.bm.faces))
+    h.move(*h.region_xy(region, 0.85, 0.85))
+    h.key('M', unicode='m')
+    yield 0.5
+    h.check("M activates su.move", h.state()["tool"] == "su.move", h.state()["tool"])
+    ridge = h.world_xy((4, 3, 3))
+    h.glide(*ridge)
+    yield 0.5
+    hov = base.controller("su.move").hover_refs[0]
+    h.check("Mover hover highlights the ridge edge", len(hov) == 1 and hov[0].kind == 'EDGE', hov)
+    s0 = bpy.context.scene.su_undo_serial
+    def dbg(tag):
+        d = h.state()
+        mv = base.controller("su.move")
+        h.log("DBG", tag, d["tool"], d["running"], d["inference"], d["locks"], d["vcb_buffer"], d["vcb_value"],
+              "start", mv.start, "cur", mv.current, "sess", mv.session is not None)
+    h.click(*ridge)
+    yield 0.4
+    dbg("after click")
+    h.key('UP_ARROW')
+    yield 0.2
+    dbg("after up")
+    h.glide(*h.world_xy((4, 3, 7)))
+    yield 0.4
+    dbg("after glide")
+    h.type_text("2", enter=False)
+    yield 0.3
+    dbg("after 2")
+    h.key('RET')
+    yield 0.8
+    dbg("after ret")
+    bm = doc.bm
+    zs = sorted(round(v.co.z, 4) for v in bm.verts)
+    planar = sum(1 for f in bm.faces if not geom.is_planar(f, 1e-4))
+    pent = sorted(len(f.verts) for f in bm.faces).count(5)
+    h.check("AC-MOV-6 ridge at z=5", zs[-2:] == [5.0, 5.0], zs)
+    h.check("AC-MOV-6 2 roof slopes + 2 pentagonal gables, 7 planar faces",
+            len(bm.faces) == 7 and planar == 0 and pent == 2, (len(bm.faces), planar, pent))
+    h.check("AC-MOV-6 one undo step", bpy.context.scene.su_undo_serial - s0 == 1, bpy.context.scene.su_undo_serial - s0)
+    yield from shot("f_mover_cumeeira")
+
+    # 8. Mover with copy (Option during the move) + 2x (AC-MOV-2) — the house is copied twice
+    rv3d.view_location = V((14, 0, 1.5))
+    rv3d.view_distance = 55.0
+    yield 0.4
+    h.move(*h.region_xy(region, 0.85, 0.85))
+    h.key('A', oskey=True)
+    yield 0.4
+    h.check("Cmd+A selects everything (7 faces + 15 edges)", kinds()[:2] == (7, 15), kinds())
+    h.click(*h.world_xy((0, 0, 0)))
+    yield 0.4
+    h.key('RIGHT_ARROW')
+    h.glide(*h.world_xy((5, 0, 0)))
+    yield 0.3
+    h.key('LEFT_ALT')
+    yield 0.3
+    h.type_text("10")
+    yield 0.8
+    h.check("Option toggles copy: 2 houses", len(doc.bm.faces) == 14, len(doc.bm.faces))
+    h.type_text("2x")
+    yield 0.8
+    bm = doc.bm
+    h.check("AC-MOV-2 `2x` → 3 houses", len(bm.faces) == 21, len(bm.faces))
+    bm.faces.ensure_lookup_table()
+    sel_f = [bm.faces[r.index] for r in selection.get() if r.kind == 'FACE' and r.index < len(bm.faces)]
+    h.check("AC-MOV-2 selection = the last copy",
+            len(sel_f) == 7 and all(min(v.co.x for v in f.verts) >= 19.99 for f in sel_f),
+            [round(min(v.co.x for v in f.verts), 2) for f in sel_f])
+    yield from shot("f_mover_copia")
+
+    # 9. Girar the last copy 90° about its front-right corner (AC-GIR-2 in the GUI)
+    h.move(*h.region_xy(region, 0.85, 0.85))
+    h.key('Q', unicode='q')
+    yield 0.5
+    h.check("Q activates su.rotate", h.state()["tool"] == "su.rotate", h.state()["tool"])
+    h.glide(*h.world_xy((28, 0, 0)))
+    yield 0.4
+    h.click(*h.world_xy((28, 0, 0)))
+    yield 0.4
+    h.glide(*h.world_xy((28, 5, 0)))
+    yield 0.3
+    h.click()
+    yield 0.4
+    h.glide(*h.world_xy((23, 0, 0)))
+    yield 0.4
+    h.type_text("90")
+    yield 0.8
+    bm = doc.bm
+    bm.verts.ensure_lookup_table()
+    pts = {v.index for r in selection.get() if r.kind == 'FACE' and r.index < len(bm.faces)
+           for v in bm.faces[r.index].verts}
+    bm.verts.ensure_lookup_table()
+    xs = [bm.verts[i].co.x for i in pts]
+    ys = [bm.verts[i].co.y for i in pts]
+    h.check("AC-GIR-2 copy turned 90° about (28,0,0): x 22..28, y −8..0",
+            pts and abs(min(xs) - 22) < 1e-3 and abs(max(xs) - 28) < 1e-3 and abs(min(ys) + 8) < 1e-3
+            and abs(max(ys)) < 1e-3, (min(xs) if xs else None, max(xs) if xs else None,
+                                      min(ys) if ys else None, max(ys) if ys else None))
+    h.check("Girar keeps the selection (7 faces)", kinds()[0] == 7, kinds())
+    yield from shot("f_girar")
+
+    # 10. Escala: corner grip `2` (AC-ESC-1 in the GUI)
+    h.move(*h.region_xy(region, 0.85, 0.85))
+    h.key('S', unicode='s')
+    yield 0.5
+    h.check("S activates su.scale", h.state()["tool"] == "su.scale", h.state()["tool"])
+    grip = h.world_xy((28, 0, 5))
+    h.glide(*grip)
+    yield 0.5
+    yield from shot("f_escala_alcas")
+    h.glide(*grip, steps=1)
+    yield 0.3
+    h.click(*grip)
+    yield 0.4
+    h.type_text("2")
+    yield 0.8
+    bm = doc.bm
+    bm.verts.ensure_lookup_table()
+    pts = {v.index for r in selection.get() if r.kind == 'FACE' and r.index < len(bm.faces)
+           for v in bm.faces[r.index].verts}
+    co = [bm.verts[i].co for i in pts]
+    ext = (round(max(c.x for c in co) - min(c.x for c in co), 3), round(max(c.y for c in co) - min(c.y for c in co), 3),
+           round(max(c.z for c in co) - min(c.z for c in co), 3)) if co else None
+    h.check("AC-ESC-1 corner `2` doubles the copy (6×8×5 → 12×16×10)", ext == (12.0, 16.0, 10.0), ext)
+    h.check("Escala: faces planar", sum(1 for f in bm.faces if not geom.is_planar(f, 1e-4)) == 0)
+    yield from shot("f_escala")
+
     h.key('SPACE', unicode=' ')
     yield 0.4
     d = h.state()

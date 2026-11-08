@@ -15,7 +15,7 @@ import bpy
 from .. import i18n, modifiers
 from ..core.state import STATE
 from . import select as sel_tool
-from .base import BaseTool, Result, ToolMeta, tool
+from .base import BaseTool, Result, ToolMeta, make_query, tool
 
 TOOL_ID = "su.paint"
 
@@ -204,6 +204,9 @@ class PaintTool(BaseTool):
 
     def activate(self, tc):
         self.update_status()
+
+    def query_ctx(self, tc, xy):
+        return make_query(tc, xy, flags=frozenset())      # Pintura hits faces by itself: no markers
 
     def press(self, tc, ev, inf):
         if ev.alt_action:

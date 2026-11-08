@@ -48,4 +48,11 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - `ui/tray_entity_info.py` (seção 10): Face/Superfície (área, materiais frente/verso), Aresta/Curva (comprimento, segmentos), Grupo (nome editável), várias → "N entidades" + contagens + área total.
 - P1: `tools/flip.py` (Virar: 3 planos pelo centro da caixa, clique vira, Option = cópia espelhada, normais para fora); clipboard `su.copy/cut/paste/paste_in_place` (Cmd+C/X/V; Colar = no local e ativa Mover); `core/geom_transform.mirror` com faces invertidas.
 - Testes: `test_f_commands.py`, `test_f_flip.py`, `test_f_clipboard.py`; GUI `scn_f` passo 11 (triplo clique → G → grupo + dica; botão direito → menu; duplo clique entra / Esc sai; Ocultar/Reexibir; Explodir).
-- Pendente P1: Componentes (definições compartilhadas — depende de B: `Document` com malha compartilhada), Interseccionar faces (pronto em WIP, entra no próximo bloco), faces ocultas.
+- Pendente P1: Componentes (definições compartilhadas — depende de B: `Document` com malha compartilhada; adiado pelo coordenador, G continua criando grupo), faces ocultas.
+
+### Bloco 5 — guias/cotas/textos, sem marcadores de inferência, Interseccionar
+- Selecionar: aresta > guia/cota/texto (G: `guides.pick`) > face; seleção dessas anotações em `tools/select.ANNOT` (as refs de B não comportam elementos que não são da malha); desenhadas em azul pela ferramenta; `SET` limpa; Esc limpa.
+- Excluir (⌫/Delete/menu) apaga também as anotações selecionadas (1 undo); Apagar apaga guia/cota/texto sob o cursor.
+- Selecionar / Apagar / Pintura consultam a inferência com `flags=frozenset()`: nenhum marcador nem ScreenTip ao pairar (SketchUp).
+- P1 `su.intersect_faces(mode='MODEL'|'SELECTION')` (menu Editar ▸ Interseccionar faces de D): segmentos plano×plano recortados nos dois polígonos (malhas originais, sem modificadores) viram arestas no documento em edição (`geom.add_edge` divide as faces); 1 undo.
+- Testes: `test_f_guides.py`, `test_f_intersect.py`; GUI `scn_f` passo 12 (clique na guia → ⌫ apaga, 1 undo; Apagar na cota).

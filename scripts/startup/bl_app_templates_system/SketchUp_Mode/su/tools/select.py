@@ -10,6 +10,9 @@ Option = add, Shift = add/subtract (toggle), Shift+Option = subtract. Drag: left
 selectable; outside geometry is still inferable by drawing tools. Esc (ops/edit_ops) clears the
 selection, then leaves the group.
 
+Guides, dimensions and texts (G) are picked too (an edge wins, then the annotation, then the face) and
+kept in ANNOT (Excluir deletes them).
+
 Shared helpers for F's other tools (Apagar, Pintura, Mover...):
     pick(tc, xy, inf) -> (doc_key, 'EDGE'|'FACE', index) | None     element under the cursor
     resolve(doc_key, kind, index) -> Ref | None                     selectable ref in the context
@@ -22,7 +25,7 @@ from mathutils import Vector
 
 from .. import colors, constants, i18n, modifiers, registry
 from ..core.state import STATE
-from .base import BaseTool, Result, ToolMeta, _ui_scale, tool
+from .base import BaseTool, Result, ToolMeta, _ui_scale, make_query, tool
 
 TOOL_ID = "su.select"
 
@@ -104,10 +107,91 @@ def entity_refs(ref):
     return selection.entity(ref)
 
 
+# ---------------------------------------------------------------------------------------------- annotations
+# Guides, dimensions and texts (G's core/guides, Scene.su_guides) are not mesh elements, so B's selection
+# sets cannot hold them (refs are pruned by mesh counts). F keeps their selection here: a set of
+# ('GUIDE'|'DIM'|'TEXT', index). Excluir deletes them; any 'SET' selection change clears them.
+ANNOT = set()
+
+
+def pick_annotation(tc, xy):
+    """('GUIDE'|'DIM'|'TEXT', i) under region pixel xy (G's guides.pick), or None."""
+    guides = registry.optional("core.guides")
+    if guides is None or not hasattr(guides, "pick") or tc is None or tc.region is None or tc.rv3d is None:
+        return None
+    try:
+        return guides.pick(tc.region, tc.rv3d, xy)
+    except Exception:
+        return None
+
+
+def apply_annotation(item, op):
+    if op == 'SET':
+        _mods()[3].clear()
+        ANNOT.clear()
+        ANNOT.add(item)
+    elif op == 'ADD':
+        ANNOT.add(item)
+    elif op == 'TOGGLE':
+        ANNOT.symmetric_difference_update({item})
+    elif op == 'REMOVE':
+        ANNOT.discard(item)
+    STATE.redraw_viewport()
+
+
+def delete_annotations(items=None):
+    """Delete the selected (or given) guides / dimensions / texts. Returns the number deleted."""
+    guides = registry.optional("core.guides")
+    items = set(ANNOT if items is None else items)
+    if guides is None or not items:
+        return 0
+    g = [i for k, i in items if k == 'GUIDE']
+    d = [i for k, i in items if k == 'DIM']
+    t = [i for k, i in items if k == 'TEXT']
+    if g:
+        guides.delete_guides(g)
+    if d or t:
+        guides.delete_annotations(dims=d, texts=t)
+    ANNOT.difference_update(items)
+    return len(items)
+
+
+def draw_annotations(dc):
+    """Selected guides / dimensions / texts in the selection blue."""
+    guides = registry.optional("core.guides")
+    prims = registry.optional("draw.prims")
+    if not ANNOT or guides is None or prims is None:
+        return
+    d = guides.data()
+    if d is None:
+        return
+    blue = colors.rgba(colors.SELECTION)
+    pts, segs = [], []
+    for kind, i in list(ANNOT):
+        if kind == 'GUIDE' and i < len(d.guides):
+            g = d.guides[i]
+            if g.kind == 'POINT':
+                pts.append(Vector(g.co))
+            else:
+                c, u = Vector(g.co), Vector(g.direction).normalized()
+                segs.append((c - u * 1000.0, c + u * 1000.0))
+        elif kind == 'DIM' and i < len(d.dims):
+            m = d.dims[i]
+            segs.append((Vector(m.a) + Vector(m.offset), Vector(m.b) + Vector(m.offset)))
+        elif kind == 'TEXT' and i < len(d.texts):
+            t = d.texts[i]
+            segs.append((Vector(t.anchor), Vector(t.leader_end)))
+    if segs:
+        prims.lines(dc, segs, blue, 2.0, depth=False)
+    if pts:
+        prims.points(dc, pts, blue, 7)
+
+
 def apply(refs, op):
     _d, _e, _ent, selection, _sp = _mods()
     refs = list(refs)
     if op == 'SET':
+        ANNOT.clear()
         selection.set(refs)
     elif op == 'ADD':
         selection.add(refs)
@@ -223,6 +307,10 @@ class SelectTool(BaseTool):
         self.cur_xy = (ev.x, ev.y)
         self.dragging = False
         self.pending = (ref, op)
+        if p is None or p[1] == 'FACE':
+            ann = pick_annotation(tc, (ev.x, ev.y))      # a guide / dimension / text over a face wins
+            if ann is not None:
+                self.pending = (("ANNOT",) + tuple(ann), op)
         return Result.RUNNING
 
     def move(self, tc, ev, inf):
@@ -245,13 +333,23 @@ class SelectTool(BaseTool):
             refs = rect_refs(tc, x0, y0, ev.x, ev.y, mode)
             if refs or op == 'SET':
                 apply(refs, op)
+        elif isinstance(ref, tuple) and ref and ref[0] == "ANNOT":
+            apply_annotation(ref[1:], op)
         elif ref is not None:
             apply(entity_refs(ref), op)
         elif op == 'SET':
             _d, _e, _ent, selection, _sp = _mods()
+            ANNOT.clear()
             selection.clear()
         self.cancel(tc)
         return Result.IDLE
+
+    def query_ctx(self, tc, xy):
+        """Selecionar picks by itself: no inference markers / ScreenTips while hovering."""
+        return make_query(tc, xy, flags=frozenset())
+
+    def draw_3d(self, dc):
+        draw_annotations(dc)
 
     def draw_2d(self, dc):
         if not self.dragging or self.press_xy is None or self.cur_xy is None:

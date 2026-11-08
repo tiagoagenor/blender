@@ -13,9 +13,10 @@ import bpy
 from .. import colors, i18n, modifiers, registry
 from ..core.state import STATE
 from . import select as sel_tool
-from .base import BaseTool, Result, ToolMeta, tool
+from .base import BaseTool, Result, ToolMeta, make_query, tool
 
 TOOL_ID = "su.eraser"
+ANNOT_KEY = "__annot__"          # pseudo doc_key of guide / dimension / text refs (never a document)
 
 STRINGS = {
     "tool.su.eraser.label": {"pt_BR": "Apagar", "en": "Eraser"},
@@ -38,13 +39,15 @@ def mode_of(ev):
 
 def _target(tc, xy, inf):
     """Ref list (edge entity or [OBJECT ref]) under the cursor, or []."""
+    from ..core import selection
     p = sel_tool.pick(tc, xy, inf)
-    if p is None:
-        return []
-    ref = sel_tool.resolve(*p)
-    if ref is None or ref.kind == 'FACE':
-        return []
-    return sel_tool.entity_refs(ref)
+    ref = sel_tool.resolve(*p) if p is not None else None
+    if ref is not None and ref.kind != 'FACE':
+        return sel_tool.entity_refs(ref)
+    ann = sel_tool.pick_annotation(tc, xy)           # guides / dimensions / texts (G)
+    if ann is not None:
+        return [selection.Ref(ANNOT_KEY, ann[0], int(ann[1]))]
+    return []
 
 
 def soften(bm, edges, on):
@@ -68,9 +71,11 @@ def apply(refs, mode, undo_key="tool.su.eraser.undo"):
     """Erase / hide / soften the refs (edges and OBJECT refs). Returns True when something changed."""
     from ..core import document, geom
     from ..ops import edit_ops
-    by_doc, objs = {}, []
+    by_doc, objs, ann = {}, [], []
     for r in refs:
-        if r.kind == 'OBJECT':
+        if r.doc_key == ANNOT_KEY:
+            ann.append((r.kind, r.index))
+        elif r.kind == 'OBJECT':
             obj = bpy.data.objects.get(r.doc_key)
             if obj is not None and obj not in objs:
                 objs.append(obj)
@@ -110,7 +115,11 @@ def apply(refs, mode, undo_key="tool.su.eraser.undo"):
             obj.hide_set(True)
     else:
         objs = []
-    if not changed and not objs:
+    if ann and mode == 'ERASE':
+        sel_tool.delete_annotations(ann)
+    elif mode != 'ERASE':
+        ann = []
+    if not changed and not objs and not ann:
         return False
     from ..core import selection
     gone = {r for r in selection.get() if r in set(refs)} if mode in ('ERASE', 'HIDE') else set()
@@ -145,6 +154,9 @@ class EraserTool(BaseTool):
     def hover(self, tc, inf):
         self.hover_refs = _target(tc, tc.xy, inf)    # pre-highlight (blue) of what a click erases
 
+    def query_ctx(self, tc, xy):
+        return make_query(tc, xy, flags=frozenset())      # no inference markers while erasing
+
     def _mark(self, tc, ev, inf):
         for r in _target(tc, (ev.x, ev.y), inf):
             if r not in self.marked:
@@ -178,7 +190,7 @@ class EraserTool(BaseTool):
         segs = []
         for r in refs:
             obj = bpy.data.objects.get(r.doc_key)
-            if obj is None or obj.type != 'MESH':
+            if r.doc_key == ANNOT_KEY or obj is None or obj.type != 'MESH':
                 continue
             if r.kind == 'EDGE' and r.index < len(obj.data.edges):
                 me, M = obj.data, obj.matrix_world

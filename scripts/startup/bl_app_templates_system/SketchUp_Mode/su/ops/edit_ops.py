@@ -10,6 +10,7 @@
     su.make_group / su.make_component (G; = Criar grupo until P1)   su.explode   su.reverse_faces
     su.hide / su.unhide_all / su.unhide_last / su.unhide_selected   su.edit_group   su.entity_info
     su.copy / su.cut / su.paste / su.paste_in_place (P1; Cmd+C/X/V; Colar = no local + Mover)
+    su.intersect_faces(mode='MODEL'|'SELECTION') (P1; original meshes, edges in the edited document)
 Helper for every multi-document edit: commit(docs, undo_key, select=None) — one undo step whose
 pre-operation selection is the selection at the call.
 """
@@ -41,6 +42,7 @@ STRINGS = {
     "tool.su.make_component.label": {"pt_BR": "Criar componente", "en": "Make Component"},
     "edit.undo_paste": {"pt_BR": "Colar", "en": "Paste"},
     "edit.undo_cut": {"pt_BR": "Recortar", "en": "Cut"},
+    "edit.undo_intersect": {"pt_BR": "Interseccionar faces", "en": "Intersect Faces"},
 }
 
 
@@ -92,8 +94,10 @@ def _remove_object_tree(obj):
 def delete_selection(undo_key="edit.undo_delete"):
     """Excluir the current selection. Returns True when something was deleted."""
     from ..core import document, geom, selection
+    from ..tools import select as sel_tool
     refs = selection.get()
-    if not refs:
+    n_ann = sel_tool.delete_annotations() if sel_tool.ANNOT else 0
+    if not refs and not n_ann:
         return False
     by_doc = {}
     objs = []
@@ -132,7 +136,7 @@ def delete_selection(undo_key="edit.undo_delete"):
             p = p.parent
         if not nested and bpy.data.objects.get(obj.name) is not None:
             _remove_object_tree(obj)
-    if not changed and not objs:
+    if not changed and not objs and not n_ann:
         return False
     commit(changed, undo_key, select=())
     return True
@@ -203,9 +207,11 @@ class SU_OT_select_invert(bpy.types.Operator):
 def escape(context=None):
     """Esc with no operation: clear the selection, else leave the open group. False = nothing done."""
     sel, ec = _core("selection"), _core("edit_context")
+    from ..tools import select as sel_tool
     if base.DISPATCH.running:
         base.DISPATCH.cancel(base.tool_context(context or bpy.context))
-    elif not sel.is_empty():
+    elif not sel.is_empty() or sel_tool.ANNOT:
+        sel_tool.ANNOT.clear()
         sel.clear()
     elif ec is not None and ec.current_object() is not None:
         ec.exit()
@@ -698,10 +704,149 @@ SU_OT_paste = _simple_op("su.paste", "Colar", paste, has_clipboard)
 SU_OT_paste_in_place = _simple_op("su.paste_in_place", "Colar no local", paste_in_place, has_clipboard)
 
 
+# ---------------------------------------------------------------------------------------------- intersect (P1)
+
+def _world_polys(obj, face_ids=None):
+    """[(world points, normal)] of the mesh polygons of obj (original mesh, no modifiers)."""
+    me, M = obj.data, obj.matrix_world
+    nm = M.to_3x3().inverted_safe().transposed()
+    out = []
+    for p in me.polygons:
+        if face_ids is not None and p.index not in face_ids:
+            continue
+        out.append(([M @ me.vertices[i].co for i in p.vertices], (nm @ p.normal).normalized()))
+    return out
+
+
+def _line_intervals(pts, n, p0, u, tol=1e-7):
+    """Parameter intervals [(t0, t1)] where the line p0 + t u (lying in the polygon's plane) is inside it."""
+    a = n.orthogonal().normalized()
+    b = n.cross(a)
+    P = [(q.dot(a), q.dot(b)) for q in pts]
+    o = (p0.dot(a), p0.dot(b))
+    d = (u.dot(a), u.dot(b))
+    ts = []
+    k = len(P)
+    for i in range(k):
+        x0, y0 = P[i]
+        x1, y1 = P[(i + 1) % k]
+        ex, ey = x1 - x0, y1 - y0
+        den = d[0] * ey - d[1] * ex
+        if abs(den) < tol:
+            continue
+        wx, wy = x0 - o[0], y0 - o[1]
+        t = (wx * ey - wy * ex) / den
+        s = (wx * d[1] - wy * d[0]) / den
+        if -tol <= s < 1.0 - tol:
+            ts.append(t)
+    ts.sort()
+    return [(ts[i], ts[i + 1]) for i in range(0, len(ts) - 1, 2)]
+
+
+def _overlap(ia, ib):
+    out = []
+    for a0, a1 in ia:
+        for b0, b1 in ib:
+            lo, hi = max(a0, b0), min(a1, b1)
+            if hi - lo > 1e-6:
+                out.append((lo, hi))
+    return out
+
+
+def intersection_segments(polys_a, polys_b):
+    """World segments where polygons of A cross polygons of B."""
+    segs = []
+    for pa, na in polys_a:
+        for pb, nb in polys_b:
+            u = na.cross(nb)
+            if u.length < 1e-6:
+                continue
+            u.normalize()
+            da, db = na.dot(pa[0]), nb.dot(pb[0])
+            # point on both planes: solve with the third direction u
+            from mathutils import Matrix, Vector
+            m = Matrix((na, nb, u))
+            try:
+                p0 = m.inverted() @ Vector((da, db, 0.0))
+            except ValueError:
+                continue
+            for t0, t1 in _overlap(_line_intervals(pa, na, p0, u), _line_intervals(pb, nb, p0, u)):
+                segs.append((p0 + u * t0, p0 + u * t1))
+    return segs
+
+
+def intersect_faces(mode='MODEL', undo_key="edit.undo_intersect"):
+    """Interseccionar faces ▸ Com o modelo ('MODEL') / Com a seleção ('SELECTION'): the lines where the
+    selected faces cross other faces are drawn as edges in the edited document (faces split there).
+    Uses the original meshes (no modifiers). Returns the number of edges added."""
+    from ..core import document, geom, selection
+    sel_faces = {}
+    for r in selection.get():
+        if r.kind == selection.FACE:
+            sel_faces.setdefault(r.doc_key, set()).add(r.index)
+        elif r.kind == selection.OBJECT:
+            o = bpy.data.objects.get(r.doc_key)
+            for x in ([o] + list(o.children_recursive)) if o is not None else ():
+                if x.type == 'MESH':
+                    sel_faces.setdefault(x.name, set()).update(range(len(x.data.polygons)))
+    if not sel_faces:
+        return 0
+    polys_a = []
+    for key, ids in sel_faces.items():
+        o = bpy.data.objects.get(key)
+        if o is not None and o.type == 'MESH':
+            polys_a += _world_polys(o, ids)
+    if mode == 'SELECTION':
+        polys_b = polys_a
+    else:
+        polys_b = []
+        for o in bpy.context.scene.objects:
+            if o.type == 'MESH' and o.visible_get():
+                polys_b += _world_polys(o, None if o.name not in sel_faces else
+                                        set(range(len(o.data.polygons))) - sel_faces[o.name])
+    segs = intersection_segments(polys_a, polys_b)
+    if not segs:
+        return 0
+    doc = document.active()
+    inv = doc.world().inverted()
+    n = 0
+    for p, q in segs:
+        if (p - q).length > geom.GEOM_TOL * 10:
+            geom.add_edge(doc.bm, inv @ p, inv @ q)
+            n += 1
+    if n:
+        commit([doc], undo_key)
+    return n
+
+
+class SU_OT_intersect_faces(bpy.types.Operator):
+    """Interseccionar faces"""
+    bl_idname = "su.intersect_faces"
+    bl_label = "Interseccionar faces"
+
+    mode: bpy.props.EnumProperty(items=(('MODEL', "Com o modelo", ""), ('SELECTION', "Com a seleção", "")),
+                                 default='MODEL')
+
+    @classmethod
+    def poll(cls, context):
+        return _poll(context) and _has_sel()
+
+    def execute(self, context):
+        _cancel_running(context)
+        try:
+            intersect_faces(self.mode)
+        except Exception:
+            perf.exception("su.intersect_faces")
+            return {'CANCELLED'}
+        _redraw()
+        return {'FINISHED'}
+
+
 _classes = (SU_OT_delete_selected, SU_OT_select_all, SU_OT_select_none, SU_OT_select_invert, SU_OT_escape,
             SU_OT_close_group, SU_OT_make_group, SU_OT_make_component, SU_OT_explode, SU_OT_reverse_faces,
             SU_OT_hide, SU_OT_unhide_all, SU_OT_unhide_last, SU_OT_unhide_selected, SU_OT_edit_group,
-            SU_OT_entity_info, SU_OT_copy, SU_OT_cut, SU_OT_paste, SU_OT_paste_in_place)
+            SU_OT_entity_info, SU_OT_copy, SU_OT_cut, SU_OT_paste, SU_OT_paste_in_place,
+            SU_OT_intersect_faces)
 
 # Window keymap items (keymap.finalize adds them after su.vcb_key and the tool shortcuts).
 KEYMAP = [

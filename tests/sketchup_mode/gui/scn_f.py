@@ -517,6 +517,32 @@ def run(h):
             len(doc.bm.faces))
     tray.set_open("entity", False)
 
+    # 12. Guides / dimensions (G) with Selecionar + ⌫ and with Apagar
+    guides = importlib.import_module(su.__name__ + ".core.guides")
+    sel_tool = importlib.import_module(su.__name__ + ".tools.select")
+    guides.delete_guides(None)
+    gd = guides.data()
+    guides.delete_annotations(dims=range(len(gd.dims)), texts=range(len(gd.texts)))
+    guides.add_guide_line(V((0, -2, 0)), V((1, 0, 0)))
+    guides.add_dimension(V((0, 0, 0)), V((8, 0, 0)), V((0, -4, 0)))
+    yield 0.4
+    h.move(*h.region_xy(region, 0.85, 0.85))
+    h.key('SPACE', unicode=' ')
+    yield 0.4
+    h.click(*h.world_xy((3, -2, 0)))
+    yield 0.5
+    h.check("Selecionar picks the guide line", sel_tool.ANNOT == {('GUIDE', 0)}, sel_tool.ANNOT)
+    s0 = bpy.context.scene.su_undo_serial
+    h.key('BACK_SPACE')
+    yield 0.5
+    h.check("⌫ deletes the selected guide (1 undo)", guides.count() == 0 and bpy.context.scene.su_undo_serial - s0 == 1,
+            (guides.count(), bpy.context.scene.su_undo_serial - s0))
+    h.key('E', unicode='e')
+    yield 0.4
+    h.click(*h.world_xy((4, -4, 0)))
+    yield 0.5
+    h.check("Apagar erases the dimension under the cursor", len(guides.data().dims) == 0, len(guides.data().dims))
+
     h.key('SPACE', unicode=' ')
     yield 0.4
     d = h.state()

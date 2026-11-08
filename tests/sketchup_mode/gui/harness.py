@@ -102,6 +102,27 @@ class Harness:
         for i in range(1, steps + 1):
             self.move(x0 + (x - x0) * i / steps, y0 + (y - y0) * i / steps)
 
+    MOD_KEYS = {"ctrl": 'LEFT_CTRL', "oskey": 'OSKEY', "shift": 'LEFT_SHIFT', "alt": 'LEFT_ALT'}
+
+    def drag(self, button, x0, y0, dx, dy, steps=8, **mods):
+        """Press-drag-release with modifiers held as REAL key events (CLICK_DRAG takes the modifiers of
+        the PRESS from the window's event state — finding of agent G)."""
+        self.move(x0, y0)
+        held = {}
+        for m in ("ctrl", "oskey", "shift", "alt"):
+            if mods.get(m):
+                held[m] = True
+                self.event(self.MOD_KEYS[m], 'PRESS', **held)
+        self.event(button, 'PRESS', **mods)
+        for i in range(1, steps + 1):
+            x, y = int(x0 + dx * i / steps), int(y0 + dy * i / steps)
+            self.event('MOUSEMOVE', 'NOTHING', x, y, **mods)
+            self._mouse = (x, y)
+        self.event(button, 'RELEASE', **mods)
+        for m in reversed(list(held)):
+            self.event(self.MOD_KEYS[m], 'RELEASE', **held)
+            held.pop(m)
+
     def key(self, type, unicode=None, **kw):
         if unicode:
             self.event(type, 'PRESS', unicode=unicode, **kw)

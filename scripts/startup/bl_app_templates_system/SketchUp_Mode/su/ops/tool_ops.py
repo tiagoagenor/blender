@@ -292,6 +292,7 @@ class SU_OT_tool_key(bpy.types.Operator):
 
 
 CONTEXT_MENUS = ("SU_MT_context",)    # F's context menu (first registered name wins)
+CONTEXT_MENU_CALLS = [0]              # menus opened (diagnostics for GUI scenarios)
 
 
 def context_menu_name():
@@ -313,6 +314,7 @@ class SU_OT_context_menu(bpy.types.Operator):
         name = context_menu_name()
         if not name or base.DISPATCH.running:
             return {'PASS_THROUGH'}
+        CONTEXT_MENU_CALLS[0] += 1
         cm = registry.optional("ui.context_menu")          # F: entity under the cursor becomes the selection
         if cm is not None and hasattr(cm, "select_under"):
             try:

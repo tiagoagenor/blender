@@ -69,3 +69,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - Harness: timers persistentes (cenários podem trocar de arquivo/template); `probe()`/`load_png()` para sondas.
 - Itens do keymap da ferramenta com `"any": True` (PRESS/RELEASE/MOUSEMOVE): Shift/Option/Cmd+clique chegam às ferramentas (`scn_a` confere `ev.shift/copy/alt_action`); Ctrl continua PASS_THROUGH.
 - Achado (C/Linha, a investigar): começar a Linha **sobre o eixo vermelho** em (4,0,0) e digitar 3 → o 1º segmento saiu com z≈0,15 e comprimento errado; a partir da origem ou de um vértice fica exato. O M-A usa a origem e o canto da linha.
+
+### Teste final de aceite (§12) — `scn_primeiro_dia`
+- 15 passos + 2ª passada de navegação com trackpad (passo 41), entrada simulada pelos caminhos normais; 94 checks; prints `screens/dia_passoNN.png`; resumo `dia_resumo.json`. Resultado atual: 15/15 + trackpad PASS; XFAIL: visual/legibilidade da cota ao orbitar (AC-DIM-3, G).
+- Desvios declarados no cenário: câmera movida por script entre áreas de trabalho; cor escolhida com `su.material_pick` (o mesmo operador do swatch); botão direito abre o menu (checado) e o item "Criar grupo" é executado com G (mesmo comando, §5.3) — popups do Blender não são endereçáveis por RNA.
+- Harness: `h.drag(...)` segura modificadores como eventos de tecla reais (CLICK_DRAG lê os modificadores do estado da janela — achado de G). Trackpad: o delta do `event_simulate` = posição − anterior; o cenário volta o cursor ao lugar entre eventos (gesto real não move o cursor).

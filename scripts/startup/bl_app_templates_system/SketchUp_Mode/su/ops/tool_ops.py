@@ -266,6 +266,32 @@ class SU_OT_coming_soon(bpy.types.Operator):
         return {'FINISHED'}
 
 
+CONTEXT_MENUS = ("SU_MT_context",)    # F's context menu (first registered name wins)
+
+
+def context_menu_name():
+    return next((n for n in CONTEXT_MENUS if hasattr(bpy.types, n)), "")
+
+
+class SU_OT_context_menu(bpy.types.Operator):
+    """Ctrl+click (Mac) and idle right click over the viewport: F's context menu (PLANO §5.2, AC-NAV-4).
+    PASS_THROUGH while F's menu does not exist, so nothing else happens."""
+    bl_idname = "su.context_menu"
+    bl_label = "SketchUp Mode: context menu"
+    bl_options = {'INTERNAL'}
+
+    @classmethod
+    def poll(cls, context):
+        return keymap_poll(context) and _view3d_region(context) is not None
+
+    def invoke(self, context, event):
+        name = context_menu_name()
+        if not name or base.DISPATCH.running:
+            return {'PASS_THROUGH'}
+        bpy.ops.wm.call_menu(name=name)
+        return {'FINISHED'}
+
+
 _field_guard = [False]
 
 
@@ -301,7 +327,7 @@ class SU_PG_vcb(bpy.types.PropertyGroup):
 
 
 _classes = (SU_OT_tool_event, SU_OT_tool_activate, SU_OT_vcb_key, SU_OT_vcb_capture, SU_OT_vcb_field_apply,
-            SU_OT_coming_soon, SU_PG_vcb)
+            SU_OT_coming_soon, SU_OT_context_menu, SU_PG_vcb)
 
 STRINGS = {
     "app.coming_soon": {"pt_BR": "Em breve: {name}", "en": "Coming soon: {name}"},

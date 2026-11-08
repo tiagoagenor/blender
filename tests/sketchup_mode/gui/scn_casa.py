@@ -21,6 +21,10 @@ import bpy
 from mathutils import Vector
 
 
+VIEW_EYE = (17.0, -13.0, 11.0)       # overview from the front-right, above the roof
+VIEW_TARGET = (4.0, 3.0, 1.8)
+
+
 class Missing(Exception):
     pass
 
@@ -91,6 +95,16 @@ def run(h):
 
     # ---------------------------------------------------------------------------------------- 0
     T.reset_model()
+    # Overview camera (what a user does with orbit/zoom before working on the roof): the default start
+    # view has the eye ~1,3 m high, so the 3 m box fills the screen and its top is not visible.
+    win, area, R = h.area_regions()
+    rv3d = area.spaces.active.region_3d
+    eye, target = Vector(VIEW_EYE), Vector(VIEW_TARGET)
+    rv3d.view_perspective = 'PERSP'
+    rv3d.view_location = target
+    rv3d.view_distance = (eye - target).length
+    rv3d.view_rotation = (target - eye).normalized().to_track_quat('-Z', 'Y')
+    area.tag_redraw()
     yield 0.5
     s0 = bpy.context.scene.su_undo_serial
     states = []                                  # (serial, VAF) after each geometric step
@@ -184,7 +198,9 @@ def run(h):
         yield 0.2
         T.type_text(num(1, 2.1))
 
-    @step(7, "rebaixo da porta 0,15 (Empurrar/puxar)", (18, 27, 11))
+    inward = lambda st: (st["bbox"][0][1] > -1e-4, ("bbox", st["bbox"], "rebaixo para dentro: y mínimo deve ficar 0"))
+
+    @step(7, "rebaixo da porta 0,15 (Empurrar/puxar)", (18, 27, 11), inward)
     def _7():
         use("su.pushpull")
         move((4.5, 0, 1.0))
@@ -206,7 +222,7 @@ def run(h):
         yield 0.2
         T.type_text(num(1.2, 1.2))
 
-    @step(9, "rebaixo da janela 0,1 (Empurrar/puxar)", (26, 39, 16))
+    @step(9, "rebaixo da janela 0,1 (Empurrar/puxar)", (26, 39, 16), inward)
     def _9():
         use("su.pushpull")
         move((1.6, 0, 1.5))

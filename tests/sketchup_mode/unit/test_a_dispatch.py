@@ -198,6 +198,20 @@ class TestEvents(DispatchCase):
         self.assertTrue(base.DISPATCH.last_error.startswith("RuntimeError"))
         base.DISPATCH.last_error = ''
 
+    def test_locks_reset_when_operation_ends(self):
+        self.press()
+        state.STATE.locks.axis = "AXIS_Z"
+        testing.dispatch(testing.ev('ESC', 'PRESS'))
+        self.assertEqual(state.STATE.locks.axis, "")
+        # also when the tool itself finishes (press/vcb returning IDLE)
+        self.press()
+        state.STATE.locks.axis = "AXIS_X"
+        self.p.running = False
+        self.p.calls.clear()
+        base.DISPATCH.handle(base.ToolContext(), testing.ev('LEFTMOUSE', 'RELEASE', 10, 10), testing.pt(0, 0))
+        self.assertFalse(base.DISPATCH.running)
+        self.assertEqual(state.STATE.locks.axis, "")
+
     def test_shift_lock(self):
         self.press()
         state.STATE.inference = testing.pt(1, 0, 0, kind="ENDPOINT")

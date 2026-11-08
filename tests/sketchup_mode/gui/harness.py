@@ -202,11 +202,23 @@ class Harness:
         self.event('LEFTMOUSE', 'RELEASE', x1, y)
         yield 0.35
 
-    def park_mouse(self):
+    def park_mouse(self, in_view=False):
+        """Move the cursor where it changes nothing: an empty spot at the bottom of the tray (else the
+        status bar). Over the 3D view the real hover runs (tool keymap MOUSEMOVE) and would overwrite
+        STATE.inference / pre-highlight entities in screenshots; pass in_view=True only to hover there."""
         win, area, R = self.area_regions()
-        r = R.get('WINDOW')
-        if r is not None:
-            self.move(*self.region_xy(r, 0.8, 0.75))
+        if area is None:
+            return
+        if in_view:
+            r = R.get('WINDOW')
+            if r is not None:
+                self.move(*self.region_xy(r, 0.8, 0.75))
+            return
+        ui = R.get('UI')
+        if ui is not None and ui.width > 40 and ui.height > 40:
+            self.move(*self.region_xy(ui, 0.5, 0.03))
+        else:
+            self.move(area.x + area.width // 2, max(2, area.y // 2))
 
     def screenshot(self, path):
         win = self.window()

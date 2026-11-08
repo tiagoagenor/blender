@@ -446,8 +446,10 @@ class Dispatcher:
         if r is not Result.PASS:
             was = self.running
             self.running = (r is Result.RUNNING)
-            if was and not self.running and ev.type not in MOVE_EVENTS:
-                _state.STATE.inference = _state.Inference.none()   # no stale marker/tooltip after the op
+            if was and not self.running:
+                _state.STATE.locks = _state.Locks()                # arrow/Shift locks end with the operation
+                if ev.type not in MOVE_EVENTS:
+                    _state.STATE.inference = _state.Inference.none()   # no stale marker/tooltip after the op
                 _state.STATE.redraw_viewport(tc.region)
         return r
 

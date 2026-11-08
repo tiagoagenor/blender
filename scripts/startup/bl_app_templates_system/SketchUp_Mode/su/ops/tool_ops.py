@@ -288,6 +288,12 @@ class SU_OT_context_menu(bpy.types.Operator):
         name = context_menu_name()
         if not name or base.DISPATCH.running:
             return {'PASS_THROUGH'}
+        cm = registry.optional("ui.context_menu")          # F: entity under the cursor becomes the selection
+        if cm is not None and hasattr(cm, "select_under"):
+            try:
+                cm.select_under(context, (event.mouse_region_x, event.mouse_region_y))
+            except Exception:
+                perf.exception("context_menu.select_under")
         bpy.ops.wm.call_menu(name=name)
         return {'FINISHED'}
 

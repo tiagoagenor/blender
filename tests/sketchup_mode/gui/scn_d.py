@@ -184,7 +184,17 @@ def run(h):
     h.check("LTS order + separators", toolset.lts_ids() == list(lts_expected), toolset.lts_ids())
     h.check("two-column LTS", bpy.types.VIEW3D_PT_tools_active._layout_generator_detect_from_region.__name__
             == "_force_two_columns")
-    h.check("toolbar override", bpy.types.VIEW3D_HT_tool_header.draw is mod("ui.header_toolbar").draw_toolbar)
+    ht = mod("ui.header_toolbar")
+
+    def owner(cls):
+        d = cls.draw            # an add-on .append() wraps it: our function is then the first of _draw_funcs
+        fs = getattr(d, "_draw_funcs", None)
+        return (fs[0] if fs else d), [getattr(f, "__module__", "?") + "." + f.__name__ for f in (fs or [])[1:]]
+    th, th_extra = owner(bpy.types.VIEW3D_HT_tool_header)
+    hh, hh_extra = owner(bpy.types.VIEW3D_HT_header)
+    probes["header appended funcs"] = {"tool_header": th_extra, "header": hh_extra}
+    h.check("header draws owned by header_toolbar (single owner)",
+            th is ht.draw_tool_header and hh is ht.draw_header, (th, hh, th_extra, hh_extra))
     h.check("status bar override", bpy.types.STATUSBAR_HT_header.draw is mod("ui.statusbar").draw)
     h.check("menu row override", bpy.types.TOPBAR_HT_upper_bar.draw_left is mod("ui.topbar").topbar_left)
     h.check("Blender UI panels hidden", mod("ui.hide").hidden_count() > 40, mod("ui.hide").hidden_count())
@@ -384,6 +394,24 @@ def run(h):
     st.face_style = 'TEXTURED'
     st.show_back_edges = False
     h.check("back copy on again", sc["box"].modifiers["SU_Display"].show_viewport)
+    # ---- 6. scene tabs (G, P1): toolbar moves to the HEADER, tabs in the TOOL_HEADER; back without scenes
+    if "su.scene_add" in dir(bpy.ops.su) or hasattr(bpy.types, "SU_OT_scene_add"):
+        ov = dict(window=h.window(), area=area, region=R['WINDOW'])
+        with bpy.context.temp_override(**ov):
+            bpy.ops.su.scene_add()
+            bpy.ops.su.scene_add()
+        yield 1.0
+        h.check("with scenes: HEADER (toolbar) shown + tabs", sp.show_region_header and ht.tabs_visible(),
+                (sp.show_region_header, ht.tabs_visible()))
+        path6 = os.path.join(h.out_dir, "scn_d_tabs.png")
+        h.screenshot(path6)
+        yield 0.5
+        with bpy.context.temp_override(**ov):
+            bpy.ops.su.scene_remove(index=1)
+            bpy.ops.su.scene_remove(index=0)
+        yield 1.0
+        h.check("without scenes: HEADER hidden again (toolbar in the TOOL_HEADER)",
+                not sp.show_region_header and not ht.tabs_visible(), (sp.show_region_header, ht.tabs_visible()))
     with open(os.path.join(h.out_dir, "probes.json"), "w", encoding="utf-8") as f:
         json.dump(probes, f, indent=1, ensure_ascii=False, default=str)
     h.check("screenshot written", os.path.isfile(path))

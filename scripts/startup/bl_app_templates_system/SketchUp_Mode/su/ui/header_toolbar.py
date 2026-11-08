@@ -1,12 +1,15 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 """"Primeiros passos" toolbar (owner: D). PLANO.md §4.1, §4.2; ported from the spike.
 
-Drawn in the 3D view's TOOL_HEADER (the HEADER is hidden by ui.startup); when the P1 scene tabs arrive
-this draw moves to the HEADER and the tabs go to the TOOL_HEADER (both orders verified in R1).
+Drawn in the 3D view's TOOL_HEADER (the HEADER hidden); while the model has scene tabs (G, P1) the
+toolbar moves to the HEADER and the tabs go to the TOOL_HEADER — this module is the ONLY owner of both
+header draws and of the HEADER visibility (`draw_header`, `draw_tool_header`, `sync_regions`).
 Groups are separated by a LINE separator. A tool button = `wm.tool_set_by_id` (pressed look when
 active). A group with a flyout shows its active member (or its head) plus a ▾ menu with the members.
 COMMAND tools run `ToolMeta.operator`; disabled tools (P2) run the "Em breve" placeholder.
 """
+
+import sys
 
 import bpy
 
@@ -107,16 +110,60 @@ def draw_toolbar(self, context):
                 s2.menu("SU_MT_flyout_" + tid.replace(".", "_"), text="", icon='DOWNARROW_HLT')
 
 
-def draw_empty(self, context):
-    pass
+# ------------------------------------------------------------------------------------------- header layout
+# Single owner of VIEW3D_HT_header.draw / VIEW3D_HT_tool_header.draw (§4.1). The scene tabs (G, P1) plug
+# in through `ui/scene_tabs.py`, which only provides `tabs_visible(context)` and `draw_tabs(layout, context)`:
+#   no tabs  → HEADER hidden, toolbar in the TOOL_HEADER (right above the viewport)
+#   tabs     → HEADER shown with the toolbar, scene tabs in the TOOL_HEADER (SketchUp's layout)
+def _tabs_module():
+    m = sys.modules.get(__package__ + ".scene_tabs")
+    return m if m is not None and hasattr(m, "tabs_visible") and hasattr(m, "draw_tabs") else None
+
+
+def tabs_visible(context=None):
+    m = _tabs_module()
+    try:
+        return bool(m is not None and m.tabs_visible(context or bpy.context))
+    except Exception:
+        return False
+
+
+def draw_header(self, context):
+    if tabs_visible(context):
+        draw_toolbar(self, context)
+
+
+def draw_tool_header(self, context):
+    m = _tabs_module()
+    if m is not None and tabs_visible(context):
+        m.draw_tabs(self.layout, context)
+    else:
+        draw_toolbar(self, context)
+
+
+def sync_regions(area=None):
+    """Show the 3D view's HEADER only while scene tabs are visible (called by ui.startup and G's ops)."""
+    if bpy.app.background:
+        return
+    if area is None:
+        wm = bpy.context.window_manager
+        areas = [a for w in wm.windows for a in w.screen.areas if a.type == 'VIEW_3D'] if wm else []
+        area = max(areas, key=lambda a: a.width * a.height) if areas else None
+    if area is None:
+        return
+    sp = area.spaces.active
+    want = tabs_visible()
+    if sp.show_region_header != want:
+        sp.show_region_header = want
+    area.tag_redraw()
 
 
 def register():
     _lts, _gs, fly = toolset.layout_lists()
     _flyout_menus[:] = [_flyout_menu_class(h) for h in fly]
     registry.register_classes(_flyout_menus)
-    registry.override(bpy.types.VIEW3D_HT_tool_header, "draw", draw_toolbar)
-    registry.override(bpy.types.VIEW3D_HT_header, "draw", draw_empty)
+    registry.override(bpy.types.VIEW3D_HT_tool_header, "draw", draw_tool_header)
+    registry.override(bpy.types.VIEW3D_HT_header, "draw", draw_header)
 
 
 def unregister():

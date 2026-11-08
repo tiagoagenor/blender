@@ -68,3 +68,8 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - Correção: camada `backfaces` (ordem 15, em `draw/display_gn.py`) redesenha os triângulos de verso de cada documento SEM luz, na cor sRGB do material de verso (`su_back_mat` → slot; padrão 1), com culling de face e teste de profundidade sobre a cópia GN (que continua dando profundidade e o desligamento no Raio X). Verso pintado (F) aparece na cor exata, sem tom azul.
 - Sondas: verso visto de cima (162,176,185) ≈ #A4B2BB ±8 (nova sonda no scn_d); frentes continuam 255/209/159.
 - Print: `doc/sketchup_mode/screens/casca_v8.png`.
+
+## Entrega 6 — Ocultar faces (F) e abas de cena (G)
+- Ocultar faces: GN "SU_Display" v2 — `su_hidden_face` → Split Edges → Scale Elements (0) no ramo original (contagem/ordem das faces mantidas); entrada "Mostrar ocultas" ← `su_style.show_hidden_geometry` (Visualizar › Geometria oculta) via `modifier.properties.inputs.<Socket>.value` (API 5.x); camada de verso ignora faces ocultas; com Geometria oculta, faces ocultas com retícula cinza; arestas das faces ocultas continuam. Print `casca_v10.png`.
+- Integração 44b13e0: `header_toolbar` é o ÚNICO dono das duas sobreposições de cabeçalho; gancho de G em `scene_tabs.tabs_visible/draw_tabs`; `sync_regions()` decide o HEADER (startup e ops de G). `scene_tabs.py` editado minimamente (nota no WS_G). Cycles faz `append` em `VIEW3D_HT_header` (draw_pause; nada aparece no Workbench) — o scn_d aceita a função nossa como a 1ª de `_draw_funcs`.
+- Tema: caixas de seleção claras (`wcol_option`). Prints `casca_v11_sem_cenas.png`, `casca_v11_com_cenas.png`.

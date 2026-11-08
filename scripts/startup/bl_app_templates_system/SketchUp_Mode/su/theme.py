@@ -117,6 +117,14 @@ def apply_theme(context=None):
     w.text = rgb(text)
     w.text_sel = rgb(text)
     w.roundness = 0.2
+    # Checkboxes (Estilos › Editar): white box, blue when checked
+    w = ui.wcol_option
+    w.inner = (1.0, 1.0, 1.0, 1.0)
+    w.inner_sel = rgba(sel_line)
+    w.outline = rgba(border)
+    w.item = (1.0, 1.0, 1.0, 1.0)
+    w.text = rgb(text)
+    w.text_sel = rgb(text)
     # Tray rows: flat bands #E0E1E9, no rounding
     w = ui.wcol_box
     w.inner = rgba(hdr)
@@ -171,8 +179,9 @@ def apply_theme(context=None):
 def theme_is_applied(context=None):
     context = context or bpy.context
     ui = context.preferences.themes[0].user_interface
-    return all(abs(a - b) < 2e-3 for w in (ui.wcol_toolbar_item, ui.wcol_radio)
-               for a, b in zip(w.inner_sel, rgba(C.UI_TOOL_ACTIVE_FILL)))
+    return (all(abs(a - b) < 2e-3 for w in (ui.wcol_toolbar_item, ui.wcol_radio)
+                for a, b in zip(w.inner_sel, rgba(C.UI_TOOL_ACTIVE_FILL)))
+            and all(abs(a - b) < 2e-3 for a, b in zip(ui.wcol_option.inner, (1.0, 1.0, 1.0, 1.0))))
 
 
 def ensure_theme(context=None):

@@ -103,6 +103,9 @@ def s_space():
     if area is None:
         return
     hide.configure_regions(area)
+    ht = _sib("ui.header_toolbar")
+    if ht is not None:
+        ht.sync_regions(area)                 # HEADER shown only with scene tabs (§4.1)
     style = _sib("core.style")
     if style is not None:
         style.apply()

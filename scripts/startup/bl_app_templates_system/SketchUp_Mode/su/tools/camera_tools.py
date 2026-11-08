@@ -5,11 +5,14 @@
   Posição da câmera  click a point: the eye goes there at eye height (1,676 m, SketchUp's 5'6"), looking
                    horizontally in the current direction; press-drag-release = eye at the press point
                    looking at the release point. Medidas "Altura dos olhos": typed before (next placement)
-                   or after (retype moves the eye up/down, "Ajustar").
+                   (the next placement). After placing, the tool switches to Olhar ao redor (SketchUp).
+  Olhar ao redor   drag to turn the view about the eye (no roll); Medidas "Altura dos olhos" (default
+                   1,68 m) moves the eye to that height above the point the camera was placed on.
 """
 
 import math
 
+import bpy
 from mathutils import Matrix, Vector
 
 from .. import colors, constants, i18n, registry
@@ -20,7 +23,13 @@ from .base import BaseTool, Result, ToolMeta, fmt_length, kind_of, tool, value_o
 EYE_HEIGHT = 1.676
 LENGTH_KINDS = frozenset({"LENGTH", "DISTANCE", "NUMBER"})
 
+# eye shared by Posição da câmera → Olhar ao redor: ground height under the eye + eye height
+EYE = {"ground_z": None, "height": EYE_HEIGHT}
+
 STRINGS = {
+    "tool.su.look_around.label": {"pt_BR": "Olhar ao redor", "en": "Look Around"},
+    "tool.su.look_around.hint": {"pt_BR": "Arraste para olhar ao redor. Digite a altura dos olhos.",
+                                 "en": "Drag to look around. Type the eye height."},
     "tool.su.zoom_window.label": {"pt_BR": "Janela de zoom", "en": "Zoom Window"},
     "tool.su.zoom_window.hint": {"pt_BR": "Clique e arraste para definir a área de zoom.",
                                  "en": "Click and drag to define the zoom area."},
@@ -174,8 +183,10 @@ class PositionCameraTool(BaseTool):
         self.press_point = None
         return Result.IDLE
 
-    def _place(self, tc, ground, target):
+    def _place(self, tc, ground, target, switch=True):
         self.last = (Vector(ground), None if target is None else Vector(target))
+        EYE["ground_z"] = Vector(ground).z
+        EYE["height"] = self.height
         STATE.last_action = LastAction(tool_id=self.meta.id, schema=self.meta.vcb_schema, reapply=self._reapply)
         if tc is None or tc.region is None:
             return
@@ -185,13 +196,16 @@ class PositionCameraTool(BaseTool):
         v.apply(tc.rv3d)
         camera.push_history(v)
         registry.deferred(lambda: camera.keep_fov(tc.area, tc.region, tc.rv3d, force=True), 0.05)
+        if switch:
+            from . import base
+            registry.deferred(lambda: base.set_workspace_tool("su.look_around"), 0.0)
 
     def _reapply(self, values):
         if not values or kind_of(values[0]) not in LENGTH_KINDS or self.last is None:
             return False
         self.height = value_of(values[0])
         from .base import tool_context
-        self._place(tool_context(), self.last[0], self.last[1])
+        self._place(tool_context(), self.last[0], self.last[1], switch=False)
         self.update_status()
         return False            # camera only: no undo step (A pushes "undo.adjust" on True)
 
@@ -199,6 +213,66 @@ class PositionCameraTool(BaseTool):
         if not values or kind_of(values[0]) not in LENGTH_KINDS:
             return Result.PASS
         self.height = value_of(values[0])           # before placing: the next eye height
+        self.update_status()
+        return Result.IDLE
+
+
+@tool(ToolMeta(id="su.look_around", label_key="tool.su.look_around.label", icon="draw.look_around",
+               cursor='HAND', vcb_label_key="vcb.eye_height", vcb_schema="length", priority='P1',
+               search_synonyms=("Olhar",)))
+class LookAroundTool(BaseTool):
+    def __init__(self):
+        self.last_xy = None
+
+    def update_status(self):
+        STATE.set_hint("tool.su.look_around.hint")
+        STATE.set_vcb(self.meta.vcb_label_key, fmt_length(EYE["height"]))
+
+    def activate(self, tc):
+        self.last_xy = None
+        if EYE["ground_z"] is None and tc is not None and tc.region is not None:
+            v = camera.View.from_rv3d(tc.region, tc.rv3d)
+            EYE["ground_z"] = v.eye().z - EYE["height"]      # not placed by Posição da câmera
+        self.update_status()
+
+    def cancel(self, tc):
+        self.last_xy = None
+
+    def press(self, tc, ev, inf):
+        self.last_xy = (ev.x, ev.y)
+        return Result.RUNNING
+
+    def move(self, tc, ev, inf):
+        if self.last_xy is None:
+            return Result.IDLE
+        if tc is not None and tc.region is not None:
+            ps = max(0.5, bpy.context.preferences.system.pixel_size)
+            v = camera.View.from_rv3d(tc.region, tc.rv3d)
+            camera.look_around(v, (ev.x - self.last_xy[0]) / ps, (ev.y - self.last_xy[1]) / ps)
+            v.apply(tc.rv3d)
+        self.last_xy = (ev.x, ev.y)
+        return Result.RUNNING
+
+    def release(self, tc, ev, inf):
+        self.last_xy = None
+        if tc is not None and tc.region is not None:
+            camera.push_history()
+        return Result.IDLE
+
+    def vcb(self, tc, values):
+        if not values or kind_of(values[0]) not in LENGTH_KINDS:
+            return Result.PASS
+        h = value_of(values[0])
+        if h <= 0.0:
+            STATE.vcb_error = True
+            return Result.IDLE
+        EYE["height"] = h
+        if tc is not None and tc.region is not None:
+            v = camera.View.from_rv3d(tc.region, tc.rv3d)
+            if EYE["ground_z"] is None:
+                EYE["ground_z"] = v.eye().z - EYE_HEIGHT
+            camera.set_eye_height(v, EYE["ground_z"], h)
+            v.apply(tc.rv3d)
         self.update_status()
         return Result.IDLE
 

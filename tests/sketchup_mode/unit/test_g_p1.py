@@ -55,6 +55,48 @@ class TestCameraTools(unittest.TestCase):
         base.DISPATCH.set_tool(base.ToolContext(), '')
 
 
+class TestLookAround(unittest.TestCase):
+    def view(self):
+        region, rv3d = F.camera()
+        return View.from_rv3d(region, rv3d)
+
+    def test_turns_about_the_eye(self):
+        v = self.view()
+        eye = v.eye()
+        f0 = v.fwd.copy()
+        camera.look_around(v, 60, 0)
+        self.assertLess((v.eye() - eye).length, 1e-6)                 # the eye does not move
+        self.assertAlmostEqual(v.right.z, 0.0, places=6)              # no roll
+        # mouse right → look right: the new forward is clockwise from the old one (seen from above)
+        self.assertLess(f0.to_2d().cross(v.fwd.to_2d()), 0.0)
+        z0 = v.fwd.z
+        camera.look_around(v, 0, 40)                                   # mouse up → look up
+        self.assertGreater(v.fwd.z, z0)
+        camera.look_around(v, 0, 100000)
+        self.assertLess(v.fwd.z, 1.0)                                  # clamped below straight up
+        self.assertLess((v.eye() - eye).length, 1e-5)
+
+    def test_eye_height(self):
+        v = self.view()
+        f0 = v.fwd.copy()
+        camera.set_eye_height(v, 0.5, 1.68)
+        self.assertAlmostEqual(v.eye().z, 2.18, places=6)
+        self.assertLess((v.fwd - f0).length, 1e-9)
+
+    def test_tool_headless_vcb(self):
+        base.DISPATCH.reset()
+        base._instances.pop("su.look_around", None)
+        camera_tools.EYE.update(ground_z=0.0, height=camera_tools.EYE_HEIGHT)
+        testing.dispatch(testing.ev('MOUSEMOVE', 'NOTHING'), "su.look_around", pt(0, 0))
+        d = testing.state_dump()
+        self.assertEqual((d["vcb_label_key"], d["vcb_value"]), ("vcb.eye_height", "1,68m"))
+        testing.type_text("2")
+        self.assertAlmostEqual(camera_tools.EYE["height"], 2.0)
+        self.assertEqual(testing.state_dump()["vcb_value"], "2,00m")
+        base.DISPATCH.set_tool(base.ToolContext(), '')
+        camera_tools.EYE.update(ground_z=None, height=camera_tools.EYE_HEIGHT)
+
+
 class TestText(unittest.TestCase):
     def setUp(self):
         self.n_err = perf.errors()

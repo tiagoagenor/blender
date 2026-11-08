@@ -203,6 +203,30 @@ def orbit_about(v, pivot, dx, dy, deg_per_px=ORBIT_DEG_PER_PX):
     return v
 
 
+def look_around(v, dx, dy, deg_per_px=ORBIT_DEG_PER_PX * 0.5):
+    """Olhar ao redor: turn the view about the EYE (fixed) by a mouse delta in logical px.
+    Mouse right → look right; mouse up → look up; no roll; clamped straight up/down."""
+    eye = v.eye()
+    level(v)
+    k = math.radians(deg_per_px)
+    f = v.fwd
+    cur = math.asin(_clamp(f.z, -1.0, 1.0))
+    lim = math.radians(89.5)
+    new = _clamp(cur + dy * k, -lim, lim)
+    q = Quaternion((0.0, 0.0, 1.0), -dx * k) @ Quaternion(v.right, new - cur)
+    v.rot = (q @ v.rot).normalized()
+    v.loc = eye + v.fwd * v.dist
+    return v
+
+
+def set_eye_height(v, ground_z, height):
+    """Move the eye vertically so it is `height` above `ground_z` (rotation kept)."""
+    eye = v.eye()
+    eye.z = ground_z + height
+    v.loc = eye + v.fwd * v.dist
+    return v
+
+
 def pan_to(v, p, xy, depth=None):
     """Move the camera (rotation kept) so world point `p` lands under region pixel `xy`."""
     p = Vector(p)

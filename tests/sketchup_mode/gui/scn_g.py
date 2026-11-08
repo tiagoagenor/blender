@@ -296,6 +296,10 @@ def part_nav(h):
     h.check("no active object", h.state()["active_object"] is None)
 
 
+def R_UI(h):
+    return h.area_regions()[2]['UI']
+
+
 def set_tool(h, tool_id):
     base = _mod(h, "tools.base")
     base.set_workspace_tool(tool_id)
@@ -563,7 +567,13 @@ def part_p1(h):
         bpy.ops.su.position_camera_cmd()
     yield 0.3
     h.check("Posição da câmera active", h.state()["tool"] == "su.position_camera", h.state()["tool"])
+    _a, r, _rv = view(h)
     G = (2.0, -1.5, 0.0)
+    for cand in ((1.5, -7.0, 0.0), (2.0, -5.0, 0.0), (2.0, -3.5, 0.0)):   # far enough to see the box
+        sc = proj(h, cand)
+        if sc is not None and 40 < sc.x < r.width - 40 and 40 < sc.y < r.height - 40:
+            G = cand
+            break
     yield hover(h, G)
     h.log("pos cam hover", h.state()["inference"], h.state()["tool"])
     h.click()
@@ -573,12 +583,31 @@ def part_p1(h):
     v = camera.current()
     h.check("Posição da câmera: eye 1,676 m over the point, horizontal look",
             (v.eye() - Vector((G[0], G[1], 1.676))).length < 0.05 and abs(v.fwd.z) < 1e-4, (v.eye(), v.fwd))
+    yield 0.3
+    d = h.state()
+    h.check("after placing: Olhar ao redor active, Altura dos olhos 1,68m",
+            d["tool"] == "su.look_around" and d["vcb_label_key"] == "vcb.eye_height" and d["vcb_value"] == "1,68m",
+            (d["tool"], d["vcb_label_key"], d["vcb_value"]))
+    eye0, f0 = camera.current().eye(), camera.current().fwd
+    _a, r, _rv = view(h)
+    cx, cy = h.region_xy(r, 0.5, 0.5)
+    _drag(h, 'LEFTMOUSE', cx, cy, -60, 20)
+    yield 0.4
+    v = camera.current()
+    h.check("Olhar ao redor: drag turns the view about the eye (eye fixed, no roll)",
+            (v.eye() - eye0).length < 1e-3 and (v.fwd - f0).length > 0.05 and abs(v.right.z) < 1e-4,
+            (eye0, v.eye(), f0, v.fwd))
     h.type_text("2")
     yield 0.5
     v = camera.current()
     h.check("Altura dos olhos `2` → eye at 2 m", abs(v.eye().z - 2.0) < 1e-3, v.eye())
-    save_screen(h, "g_posicao_camera.png")
+    h.check("Medidas shows 2,00m", h.state()["vcb_value"] == "2,00m", h.state()["vcb_value"])
+    h.move(*h.region_xy(R_UI(h), 0.5, 0.5))
+    yield 0.3
+    save_screen(h, "g_posicao_camera_v2.png")
     yield 0.2
+    h.key('SPACE', unicode=' ')
+    yield 0.3
     camera.standard_view("ISO")
     camera.zoom_extents()
     zoom_out(h, 2)

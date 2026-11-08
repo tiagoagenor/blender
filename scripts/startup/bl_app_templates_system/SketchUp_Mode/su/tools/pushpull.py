@@ -56,6 +56,28 @@ def _face_target(inf):
     return doc, idx
 
 
+def face_pick(tc, xy, inf):
+    """The face under the cursor as an ON_FACE inference: the inference itself when it already names a
+    face, else a ray cast at `xy` (a point inference — midpoint, center… — over a face still picks the
+    face, as in SketchUp). Headless (no region) the inference is returned unchanged."""
+    if inf is not None and inf.elem and inf.elem[0] == "FACE":
+        return inf
+    if tc is None or tc.region is None or tc.rv3d is None or xy is None:
+        return inf
+    spatial = registry.optional("core.spatial")
+    if spatial is None:
+        return inf
+    from ..core import viewutil
+    from ..core.state import Inference
+    o, d = viewutil.mouse_ray(tc.region, tc.rv3d, xy)
+    hit = spatial.ray_cast(tc, o, d)
+    if not hit.ok:
+        return inf
+    return Inference(kind="ON_FACE", point=hit.point.copy(), normal=hit.normal_orig.copy(), side=hit.side,
+                     plane=(hit.point.copy(), hit.normal_orig.copy()), doc_key=hit.doc_key,
+                     elem=("FACE", hit.face_idx_orig), obj_name=hit.obj.name if hit.obj else "")
+
+
 @tool(ToolMeta(id=TOOL_ID, label_key="tool.su.pushpull.label", icon="ops.mesh.extrude_region_move", shortcut="P",
                cursor='SCROLL_Y', vcb_label_key="vcb.distance", vcb_schema="length"))
 class PushPullTool(BaseTool):
@@ -138,7 +160,7 @@ class PushPullTool(BaseTool):
         return doc
 
     def hover(self, tc, inf):
-        self._highlight(inf)
+        self._highlight(face_pick(tc, tc.xy, inf))
 
     # -- inference -----------------------------------------------------------------------------------
     def query_ctx(self, tc, xy):
@@ -191,7 +213,7 @@ class PushPullTool(BaseTool):
 
     def move(self, tc, ev, inf):
         if self.session is None:
-            self._highlight(inf)
+            self._highlight(face_pick(tc, (ev.x, ev.y), inf))
             return Result.IDLE
         self._track(inf)
         self.update_status()
@@ -199,7 +221,7 @@ class PushPullTool(BaseTool):
 
     def press(self, tc, ev, inf):
         if self.session is None:
-            if not self._start(tc, ev, inf):
+            if not self._start(tc, ev, face_pick(tc, (ev.x, ev.y), inf)):
                 return Result.IDLE
             self.update_status()
             return Result.RUNNING

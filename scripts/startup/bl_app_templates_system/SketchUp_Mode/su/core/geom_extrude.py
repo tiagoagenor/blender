@@ -554,6 +554,244 @@ def _inside_loops(loops, n, p):
     return inside
 
 
+# ------------------------------------------------------------------------------------ Siga-me
+
+def _newell(pts):
+    n = Vector()
+    k = len(pts)
+    for i in range(k):
+        a, b = pts[i], pts[(i + 1) % k]
+        n.x += (a.y - b.y) * (a.z + b.z)
+        n.y += (a.z - b.z) * (a.x + b.x)
+        n.z += (a.x - b.x) * (a.y + b.y)
+    return n.normalized() if n.length > 1e-12 else n
+
+
+def order_path(edges_pts):
+    """[(a, b)] segments (coordinates) → (ordered points, closed) of one connected chain, or None."""
+    segs = [(Vector(a), Vector(b)) for a, b in edges_pts]
+    if not segs:
+        return None
+
+    def key(p):
+        return p.to_tuple(5)
+
+    adj = {}
+    for a, b in segs:
+        adj.setdefault(key(a), []).append(b)
+        adj.setdefault(key(b), []).append(a)
+        if len(adj[key(a)]) > 2 or len(adj[key(b)]) > 2:
+            return None
+    ends = [k for k, v in adj.items() if len(v) == 1]
+    closed = not ends
+    start = segs[0][0] if closed else Vector(next(k for k in ends))
+    pts = [start]
+    prev = None
+    cur = start
+    while True:
+        nxt = [p for p in adj[key(cur)] if prev is None or key(p) != key(prev)]
+        if not nxt:
+            break
+        p = nxt[0]
+        if closed and key(p) == key(start):
+            break
+        pts.append(p)
+        prev, cur = cur, p
+        if len(pts) > len(segs) + 1:
+            return None
+    if len(pts) - (0 if closed else 1) != len(segs):
+        return None
+    return pts, closed
+
+
+def follow_me(bm, profile, path, closed, smooth_from_curve=False):
+    """Siga-me: sweep the logical face `profile` (face index) along `path` (points in the document's
+    space, ordered; `closed` = loop) with mitred joints. Open path: the profile is the start cap (it is
+    kept) and a new end cap closes the solid; the path end nearest the profile is the start. Closed path:
+    the sweep starts at the path vertex nearest the profile and the profile face is removed. Returns dict
+    (faces=[...], ok=bool)."""
+    from . import entities
+    lay = geom.ensure_layers(bm)
+    bm.faces.ensure_lookup_table()
+    f0 = bm.faces[profile]
+    lf = entities.logical_face(bm, f0)
+    n_p = lf.plane[0].normalized()
+    mat, back = f0.material_index, f0[lay.back]
+    loops = [[v.co.copy() for v in lf.outer_loop]] + [[v.co.copy() for v in l] for l in lf.inner_loops]
+    curve_profile = [[v for v in loop] for loop in [lf.outer_loop] + lf.inner_loops]
+    pcurves = []
+    for loop in curve_profile:
+        k = len(loop)
+        cids = []
+        for i in range(k):
+            e = bm.edges.get((loop[i], loop[(i + 1) % k]))
+            cids.append(e[lay.curve] if e is not None else 0)
+        pcurves.append(cids)
+    centroid = sum(loops[0], Vector()) / len(loops[0])
+    P = [Vector(p) for p in path]
+    if closed and len(P) > 2 and (P[0] - P[-1]).length <= geom.GEOM_TOL:
+        P = P[:-1]
+    if len(P) < 2 or (closed and len(P) < 3):
+        return {"ok": False, "faces": []}
+    if closed:
+        i0 = min(range(len(P)), key=lambda i: (P[i] - centroid).length)
+        P = P[i0:] + P[:i0]
+    elif (P[-1] - centroid).length < (P[0] - centroid).length:
+        P.reverse()
+    m = len(P)
+    nseg = m if closed else m - 1
+    D = [(P[(k + 1) % m] - P[k]).normalized() for k in range(nseg)]
+    M = []
+    for i in range(m if closed else m):
+        if closed:
+            M.append((D[i - 1] + D[i % nseg]).normalized())
+        elif i == 0:
+            M.append(D[0].copy())
+        elif i == m - 1:
+            M.append(D[-1].copy())
+        else:
+            M.append((D[i - 1] + D[i]).normalized())
+
+    def project(pts, d, co, nrm):
+        out = []
+        for p in pts:
+            den = d.dot(nrm)
+            if abs(den) < 1e-9:
+                return None
+            t = (co - p).dot(nrm) / den
+            out.append(p + d * t)
+        return out
+
+    stations = m + 1 if closed else m
+    rings = []
+    first = []
+    for loop in loops:
+        r = project(loop, D[0], P[0], M[0]) if closed else [p.copy() for p in loop]
+        if r is None:
+            return {"ok": False, "faces": []}
+        first.append(r)
+    rings.append(first)
+    for i in range(1, stations):
+        si = i % m
+        d = D[i - 1]
+        nxt = []
+        for r in rings[-1]:
+            q = project(r, d, P[si], M[si])
+            if q is None:
+                return {"ok": False, "faces": []}
+            nxt.append(q)
+        rings.append(nxt)
+    if closed:
+        rings[-1] = rings[0]
+    flip = n_p.dot(D[0]) > 0.0          # the profile front looks into the sweep: build inside-out, then flip
+
+    # faces that exist before the sweep (a face B's kernel recreates in their place is not "new")
+    old = []
+    for f in bm.faces:
+        if f in lf.faces and closed:
+            continue
+        f.normal_update()
+        old.append((f.normal.copy(), [v.co.copy() for v in f.verts]))
+    if closed:
+        geom.erase_faces(bm, lf.faces)
+    # edges: rings (except the profile itself) and longitudinal edges
+    for i in range(1, stations if not closed else stations - 1):
+        for r in rings[i]:
+            k = len(r)
+            for j in range(k):
+                geom.add_edge(bm, r[j], r[(j + 1) % k])
+    if closed:
+        for r in rings[0]:
+            k = len(r)
+            for j in range(k):
+                geom.add_edge(bm, r[j], r[(j + 1) % k])
+    for i in range(stations - 1):
+        for li, r in enumerate(rings[i]):
+            for j in range(len(r)):
+                geom.add_edge(bm, r[j], rings[i + 1][li][j])
+    # no faces in the mitre planes (inside the solid)
+    inner_stations = range(0, stations - 1) if closed else range(1, stations - 1)
+    for i in inner_stations:
+        s = loop_sample(rings[i][0])
+        fs = [f for f in faces_at(bm, s, M[i % m])]
+        if fs:
+            geom.erase_faces(bm, fs)
+    # orientation: sides consistent with the profile (x→y around n_p ⇒ side (y, x, x', y'))
+    faces = []
+    sgn = -1.0 if flip else 1.0
+    for i in range(stations - 1):
+        for li, r in enumerate(rings[i]):
+            k = len(r)
+            for j in range(k):
+                a, b = r[j], r[(j + 1) % k]
+                a2, b2 = rings[i + 1][li][j], rings[i + 1][li][(j + 1) % k]
+                want = _newell([b, a, a2, b2]) * sgn
+                c = (a + b + a2 + b2) / 4.0
+                for f in faces_at(bm, c, want):
+                    geom.orient_face(f, want)
+                    f.material_index, f[lay.back] = mat, back
+                    if f not in faces:
+                        faces.append(f)
+                    if pcurves[li][j] or smooth_from_curve:
+                        f.smooth = True
+    if not closed:
+        s = loop_sample(rings[-1][0])
+        for f in faces_at(bm, s, M[-1]):
+            geom.orient_face(f, D[-1] * (1.0 if not flip else 1.0))
+            f.material_index, f[lay.back] = mat, back
+            faces.append(f)
+        s0 = loop_sample(rings[0][0])
+        for f in faces_at(bm, s0, n_p):
+            geom.orient_face(f, -D[0])
+    # soft edges: along a curved path (mitre ring edges) and along a curved profile (longitudinal edges)
+    if smooth_from_curve:
+        for i in (range(1, stations - 1) if not closed else range(0, stations - 1)):
+            for r in rings[i]:
+                k = len(r)
+                for j in range(k):
+                    e = _edge_between(bm, r[j], r[(j + 1) % k])
+                    if e is not None:
+                        e[lay.soft] = True
+                        e.smooth = False
+    for li, r in enumerate(rings[0]):
+        k = len(r)
+        cids = pcurves[li]
+        for j in range(k):
+            if cids[j] and cids[j] == cids[j - 1]:
+                for i in range(stations - 1):
+                    e = _edge_between(bm, rings[i][li][j], rings[i + 1][li][j])
+                    if e is not None:
+                        e[lay.soft] = True
+    # loops of the new edges can close planar regions that are not part of the sweep (e.g. the inner rim
+    # of a moulding): remove every face that is neither swept nor where a face was before
+    keep = set(faces)
+    extra = []
+    for f in bm.faces:
+        if f in keep:
+            continue
+        f.normal_update()
+        s = _sample_point(f)
+        if not any(abs(abs(n.dot(f.normal)) - 1.0) < 1e-5 and abs(n.dot(s - pts[0])) <= PLANE_TOL * 10
+                   and _inside_loops([pts], n, s) for n, pts in old):
+            extra.append(f)
+    if extra:
+        bridges = {e for f in extra for e in f.edges if e[lay.bridge]}
+        bmesh.ops.delete(bm, geom=extra, context='FACES_ONLY')
+        wire = [e for e in bridges if e.is_valid and not e.link_faces]
+        if wire:
+            bmesh.ops.delete(bm, geom=wire, context='EDGES')
+    for f in bm.faces:
+        f.normal_update()
+    return {"ok": True, "faces": [f for f in faces if f.is_valid]}
+
+
+def _edge_between(bm, a, b):
+    va, vb = _vert_at(bm, a), _vert_at(bm, b)
+    if va is None or vb is None:
+        return None
+    return bm.edges.get((va, vb))
+
+
 def register():
     pass
 

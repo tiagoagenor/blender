@@ -14,7 +14,7 @@ from mathutils import Vector
 from .. import colors, constants, i18n, registry
 from ..core.state import STATE, LastAction, Locks
 from .base import BaseTool, Result, ToolMeta, fmt_length, kind_of, make_query, tool, value_of
-from .pushpull import _face_target
+from .pushpull import _face_target, face_pick
 
 TOOL_ID = "su.offset"
 LENGTH_KINDS = frozenset({"LENGTH", "DISTANCE", "NUMBER"})
@@ -95,7 +95,7 @@ class OffsetTool(BaseTool):
         return doc, idx
 
     def hover(self, tc, inf):
-        self._highlight(inf)
+        self._highlight(face_pick(tc, tc.xy, inf))
 
     def query_ctx(self, tc, xy):
         if self.doc is None:
@@ -136,7 +136,7 @@ class OffsetTool(BaseTool):
 
     def move(self, tc, ev, inf):
         if self.doc is None:
-            self._highlight(inf)
+            self._highlight(face_pick(tc, (ev.x, ev.y), inf))
             return Result.IDLE
         self._track(inf)
         self.update_status()
@@ -144,7 +144,7 @@ class OffsetTool(BaseTool):
 
     def press(self, tc, ev, inf):
         if self.doc is None:
-            if not self._start(inf):
+            if not self._start(face_pick(tc, (ev.x, ev.y), inf)):
                 return Result.IDLE
             self.update_status()
             return Result.RUNNING

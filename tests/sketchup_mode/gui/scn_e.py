@@ -132,6 +132,8 @@ def part_casa(h):
     """ROTEIRO_CASA Parte 1 passos 1, 2, 6, 7, 8, 9 (sem a cumeeira/guias): piso, volume, porta, janela."""
     T = h.testing
     T.reset_model()
+    import importlib
+    importlib.import_module(h.su.__name__ + ".core.undo").push("undo.init")     # empty model = an undo step
     _frame_view(h, (4.0, 3.0, 1.2), 22.0)
     yield 0.5
     s0 = bpy.context.scene.su_undo_serial
@@ -268,7 +270,89 @@ def part_casa(h):
     h.check("single window (no popup)", len(bpy.context.window_manager.windows) == 1)
 
 
-PARTS = [("retangulo", part_retangulo), ("casa", part_casa)]
+def _draw_rect(h, p1, toward, text):
+    h.glide(*h.world_xy(p1))
+    yield 0.3
+    h.key('R', unicode='r')
+    yield 0.3
+    h.glide(*h.world_xy(p1))
+    yield 0.4
+    h.click()
+    yield 0.2
+    h.glide(*h.world_xy(toward))
+    yield 0.3
+    h.type_text(text)
+    yield 0.5
+
+
+def _pull(h, at, toward, text=None, click_at=None):
+    h.key('P', unicode='p')
+    yield 0.3
+    h.glide(*h.world_xy(at))
+    yield 0.4
+    h.click()
+    yield 0.3
+    h.glide(*h.world_xy(toward))
+    yield 0.5
+    if text is not None:
+        h.type_text(text)
+    else:
+        h.click()
+    yield 0.6
+
+
+def part_encaixe(h):
+    """AC-EMP-3 (encaixe no topo de outra caixa), AC-CIR-1/2 (cilindro suave)."""
+    T = h.testing
+    T.reset_model()
+    _frame_view(h, (5.0, 2.0, 1.0), 20.0)
+    yield 0.5
+    yield from _draw_rect(h, (0.0, 0.0, 0.0), (1.0, 1.0, 0.0), "2;2")
+    yield from _pull(h, (1.0, 1.0, 0.0), (1.0, 1.0, 0.5), "1")
+    yield from _draw_rect(h, (4.0, 0.0, 0.0), (5.0, 1.0, 0.0), "2;2")
+    yield from _pull(h, (5.0, 1.0, 0.0), (5.0, 1.0, 1.0), "2")
+    h.check("two boxes", _counts(h) == (16, 24, 12), _counts(h))
+    # pull the low box's top while hovering the tall box's top → snaps to its height
+    yield from _pull(h, (1.0, 1.2, 1.0), (5.0, 1.2, 2.0))
+    import importlib
+    doc = importlib.import_module(h.su.__name__ + ".core.document").root()
+    zs = [v.co.z for v in doc.bm.verts if v.co.x < 3.0]
+    h.check("AC-EMP-3: encaixe → altura 2,000", abs(max(zs) - 2.0) < 1e-4, max(zs))
+    yield from _settle(h)
+    h.screenshot(os.path.join(h.out_dir, "e_pushpull_encaixe.png"))
+    yield 0.2
+    # cylinder (12 sides)
+    area0 = h.stats().get("area", 0.0)
+    h.glide(*h.world_xy((8.0, 1.0, 0.0)))
+    yield 0.3
+    h.key('C', unicode='c')
+    yield 0.3
+    h.type_text("12")
+    yield 0.3
+    h.check("Lados = 12 before the click", h.state()["vcb_value"] == "12", h.state()["vcb_value"])
+    h.glide(*h.world_xy((8.0, 1.0, 0.0)))
+    yield 0.4
+    h.click()
+    yield 0.2
+    h.glide(*h.world_xy((9.0, 1.0, 0.0)))
+    yield 0.3
+    h.type_text("1")
+    yield 0.5
+    st = h.stats()
+    h.check("AC-CIR-1: círculo de 12 lados, área 3,0", abs(st.get("area", 0) - area0 - 3.0) < 1e-3,
+            st.get("area", 0) - area0)
+    yield from _pull(h, (8.3, 1.2, 0.0), (8.3, 1.2, 1.0), "2")
+    st = h.stats()
+    h.check("AC-CIR-2: laterais suaves (12 arestas su_soft)", st.get("soft") == 12, st.get("soft"))
+    yield from _settle(h)
+    h.screenshot(os.path.join(h.out_dir, "e_cilindro.png"))
+    yield 0.2
+    d = h.state()
+    h.check("no active object", d["active_object"] is None, d["active_object"])
+    h.check("single window (no popup)", len(bpy.context.window_manager.windows) == 1)
+
+
+PARTS = [("retangulo", part_retangulo), ("casa", part_casa), ("encaixe", part_encaixe)]
 
 
 def run(h):

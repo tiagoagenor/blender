@@ -25,7 +25,7 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - [x] undo (serial), session/eventos (`hold/release` de prontidão), `testing`, harness
 - [x] **Linha** (AC-LIN-1, AC-LIN-6, AC-LIN-7 + cadeia/duplo clique/arrasto/Esc) — passa a E após M-A
 - [x] Integrar B, C (vcb `set_applier`, esquema `line`, inferência real) e D (visual, `su_ui_ready`, K = Arestas traseiras)
-- [ ] Fechar M-A com E (Retângulo 2×3 + Cmd+Z no `scn_smoke`) + print lado a lado vazio × ref 2
+- [x] **M-A fechado**: `scn_smoke` E2E = Linha 3×2 pelas Medidas → face; Retângulo 2×3 digitado com o mouse sobre a Bandeja; Cmd+Z remove só o retângulo; print `screens/a_m_a.png` + lado a lado `screens/a_vazio_vs_ref2.png`. Contratos §2.4 congelados.
 
 ## Sub-checklist §9.2-A
 1. [x] dev_env/run/run_unit/run_gui a partir de `visual_spike/run.sh` + `driver.py` (lock, splash, envs DATAFILES/EXTENSIONS, independente do tamanho da janela)
@@ -67,3 +67,5 @@ Legenda: `[ ]` pendente · `[~]` em andamento · `[x]` feito. Brief: `PLANO.md` 
 - `prefs.py` (ORDER 10): guarda os valores das prefs fora do swap do template (navegação, overlap, smooth view, `light_ambient`, status bar, mini eixo) em memória e em `<config>/sketchup_mode_prefs_backup.json`; restaura no `unregister` e no `exit_pre` (roda ANTES do salvamento automático de prefs ao sair). Donos que mexem em outra pref chamam `prefs.track(seção, attr)` antes.
 - `scn_casa` (ROTEIRO_CASA Parte 1): cada passo usa `testing.dispatch` nas projeções dos pontos 3D (inferência real), confere V/A/F, `validate`, planaridade, e grava `doc/sketchup_mode/screens/casa_passoN.png`; passo 11 = undo até o vazio e redo. Hoje: passo 0 ok, passo 1 para em "su.rectangle não registrado" (espera E/F/G).
 - Harness: timers persistentes (cenários podem trocar de arquivo/template); `probe()`/`load_png()` para sondas.
+- Itens do keymap da ferramenta com `"any": True` (PRESS/RELEASE/MOUSEMOVE): Shift/Option/Cmd+clique chegam às ferramentas (`scn_a` confere `ev.shift/copy/alt_action`); Ctrl continua PASS_THROUGH.
+- Achado (C/Linha, a investigar): começar a Linha **sobre o eixo vermelho** em (4,0,0) e digitar 3 → o 1º segmento saiu com z≈0,15 e comprimento errado; a partir da origem ou de um vértice fica exato. O M-A usa a origem e o canto da linha.

@@ -73,18 +73,18 @@ def _m_a(h):
         win, area, R = h.area_regions()
     ru = R['UI']
 
-    # Linha 3×2 from (4,0,0) by Measurements
-    h.glide(*h.world_xy((4.0, 0.0, 0.0)))
+    # Linha 3×2 from the origin by Measurements
+    h.glide(*h.world_xy((0.0, 0.0, 0.0)))
     yield 0.2
     h.key('L', unicode='l')
     yield 0.4
     h.check("M-A: L → Linha", h.state()["tool"] == "su.line", h.state()["tool"])
-    h.glide(*h.world_xy((4.0, 0.0, 0.0)))
+    h.glide(*h.world_xy((0.0, 0.0, 0.0)))
     yield 0.3
     h.click()
     yield 0.3
-    for toward, text in (((5.0, 0.0, 0.0), "3"), ((7.0, 1.0, 0.0), "2"), ((6.0, 2.0, 0.0), "3"),
-                         ((4.0, 1.0, 0.0), "2")):
+    for toward, text in (((1.0, 0.0, 0.0), "3"), ((3.0, 1.0, 0.0), "2"), ((2.0, 2.0, 0.0), "3"),
+                         ((0.0, 1.0, 0.0), "2")):
         h.glide(*h.world_xy(toward))
         yield 0.3
         h.type_text(text)
@@ -93,17 +93,17 @@ def _m_a(h):
     h.check("M-A: Linha 3×2 → 1 face 6 m²", st.get("faces") == 1 and abs(st.get("area", 0) - 6.0) < 1e-3,
             (st.get("faces"), st.get("area"), st.get("bbox")))
 
-    # Retângulo 2×3 at the origin, typed with the mouse over the tray
-    h.glide(*h.world_xy((0.0, 0.0, 0.0)))
+    # Retângulo 2×3 from the Linha's corner (3,0,0), typed with the mouse over the tray
+    h.glide(*h.world_xy((3.0, 0.0, 0.0)))
     yield 0.2
     h.key('R', unicode='r')
     yield 0.4
     h.check("M-A: R → Retângulo", h.state()["tool"] == "su.rectangle", h.state()["tool"])
-    h.glide(*h.world_xy((0.0, 0.0, 0.0)))
+    h.glide(*h.world_xy((3.0, 0.0, 0.0)))
     yield 0.3
     h.click()
     yield 0.3
-    h.glide(*h.world_xy((1.0, 1.0, 0.0)))
+    h.glide(*h.world_xy((4.0, 1.0, 0.0)))
     yield 0.3
     h.move(*h.region_xy(ru, 0.5, 0.5))          # mouse over the tray while typing
     yield 0.3
@@ -123,6 +123,6 @@ def _m_a(h):
     yield 0.8
     st = h.stats()
     h.check("M-A: Cmd+Z removes the rectangle, keeps the line face",
-            st.get("faces") == 1 and abs(st.get("area", 0) - 6.0) < 1e-3 and st["bbox"][0][0] > 3.9,
+            st.get("faces") == 1 and abs(st.get("area", 0) - 6.0) < 1e-3 and st["bbox"][1][0] < 3.0 + 1e-4,
             (st.get("faces"), st.get("area"), st.get("bbox")))
     h.check("M-A: no active object", h.state()["active_object"] is None)
